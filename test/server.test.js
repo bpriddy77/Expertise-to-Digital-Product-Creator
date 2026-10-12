@@ -5,6 +5,7 @@ import { SCHEMAS } from '../lib/schemas.js';
 import { BUILDERS, SYSTEM, transcript } from '../lib/prompts.js';
 import { quoteIsGenuine, CLEAN, riskyPhrases } from '../lib/guardrails.js';
 import { costOf } from '../lib/pricing.js';
+import { pickModel, resetModelCache } from '../lib/models.js';
 import { callClaude } from '../lib/claude.js';
 import ai, { aiMode } from '../api/ai.js';
 import exporter from '../api/export.js';
@@ -140,7 +141,7 @@ test('client sends output_config.format with the schema', async () => {
 test('client turns API problems into friendly, non-technical errors', async () => {
   await assert.rejects(callClaude({ apiKey: 'k', model: 'm', system: '', messages: [], schema: {}, maxTokens: 1, fetchImpl: fakeFetch(429, {}) }), /busy right now/);
   await assert.rejects(callClaude({ apiKey: 'k', model: 'm', system: '', messages: [], schema: {}, maxTokens: 1, fetchImpl: fakeFetch(200, { stop_reason: 'refusal', content: [] }) }), /could not help/);
-  await assert.rejects(callClaude({ apiKey: '', model: 'm', system: '', messages: [], schema: {}, maxTokens: 1 }), /not set up yet/);
+  await assert.rejects(callClaude({ apiKey: '', model: 'm', system: '', messages: [], schema: {}, maxTokens: 1 }), (e) => /isn't available/.test(e.message) && /ANTHROPIC_API_KEY is not set/.test(e.detail));
 });
 
 /* ---------- API handlers ---------- */
@@ -220,14 +221,112 @@ test('access code is enforced when set', async () => {
   assert.equal(ok.statusCode, 200);
 });
 
-test('live mode path: handler calls the API and prices the real model', async () => {
+/* ---------- Live mode: model selection and errors ---------- */
+
+const M = (id, extra = {}) => ({ type: 'model', id, lifecycle: 'active', created_at: '2026-01-01T00:00:00Z', ...extra });
+const json = (status, body) => ({ ok: status < 400, status, headers: { get: () => null }, json: async () => body });
+const reply = (obj, model, usage = { input_tokens: 1000, output_tokens: 100 }) => json(200, { model, stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(obj) }], usage });
+const FOLLOW = { needs_follow_up: false, follow_up_question: '', acknowledgement: 'Thanks.' };
+
+/** Fake Anthropic API: a models list plus a messages handler. Records which models were called. */
+function fakeAnthropic({ models, onMessage }) {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    if (url.includes('/v1/models')) return json(200, { data: models, has_more: false, last_id: null });
+    const body = JSON.parse(init.body);
+    calls.push(body.model);
+    return onMessage(body);
+  };
+  return { fetchImpl, calls };
+}
+
+test('model picking: preferred names first, dated snapshots of aliases, newest in the right line as a fallback', () => {
+  assert.equal(pickModel('fast', [M('claude-haiku-5-5'), M('claude-haiku-4-5')]), 'claude-haiku-5-5');
+  assert.equal(pickModel('fast', [M('claude-haiku-4-5-20251001')]), 'claude-haiku-4-5-20251001', 'alias matches a dated snapshot');
+  assert.equal(pickModel('smart', [M('claude-sonnet-5'), M('claude-sonnet-4-6')]), 'claude-sonnet-5');
+  assert.equal(pickModel('smart', [M('claude-sonnet-9', { line: 'sonnet', created_at: '2027-01-01' }), M('claude-sonnet-8', { line: 'sonnet', created_at: '2026-06-01' })]), 'claude-sonnet-9', 'unknown future names: newest sonnet');
+  assert.equal(pickModel('smart', [M('claude-sonnet-5-5', { capabilities: { structured_outputs: false } }), M('claude-sonnet-5')]), 'claude-sonnet-5', 'skips models without structured outputs');
+  assert.equal(pickModel('smart', [M('claude-sonnet-5-5', { lifecycle: 'retired' }), M('claude-sonnet-4-6')]), 'claude-sonnet-4-6', 'skips retired models');
+  assert.equal(pickModel('smart', [M('claude-sonnet-5'), M('custom-x')], 'custom-x'), 'custom-x', 'override wins when available');
+  assert.equal(pickModel('smart', [M('claude-sonnet-5')], 'not-there'), 'claude-sonnet-5', 'unavailable override is ignored');
+  assert.equal(pickModel('fast', [M('claude-sonnet-5')]), null);
+});
+
+test('live mode uses the models the key can actually call, and prices them', async () => {
+  resetModelCache();
+  const { fetchImpl, calls } = fakeAnthropic({ models: [M('claude-sonnet-4-6'), M('claude-haiku-4-5-20251001')], onMessage: (b) => reply(FOLLOW, b.model) });
   const res = mockRes();
-  const fetchImpl = fakeFetch(200, { model: 'claude-haiku-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ needs_follow_up: false, follow_up_question: '', acknowledgement: 'Thanks.' }) }], usage: { input_tokens: 1000, output_tokens: 100 } });
-  await ai(mockReq({ body: { step: 'followup', payload: { questionId: 'q1', answer: 'A long specific answer.' } } }), res, { env: { ANTHROPIC_API_KEY: 'k' }, fetchImpl });
+  await ai(mockReq({ body: { step: 'followup', payload: { questionId: 'q1', answer: 'A specific answer.' } } }), res, { env: { ANTHROPIC_API_KEY: 'k' }, fetchImpl });
   const j = res.json();
-  assert.equal(j.mode, 'live');
+  assert.equal(j.ok, true, j.detail);
+  assert.deepEqual(calls, ['claude-haiku-4-5-20251001']);
   assert.equal(j.usage.estimated, false);
-  assert.ok(Math.abs(j.usage.cost - 0.00015) < 1e-12);
+  assert.ok(Math.abs(j.usage.cost - (1000 * 1 + 100 * 5) / 1e6) < 1e-12, 'Haiku 4.5 price');
+});
+
+test('a model that returns 404 is skipped and the next one is tried automatically', async () => {
+  resetModelCache();
+  const { fetchImpl, calls } = fakeAnthropic({
+    models: [M('claude-haiku-5-5'), M('claude-haiku-4-5'), M('claude-sonnet-5')],
+    onMessage: (b) => (b.model === 'claude-haiku-5-5'
+      ? json(404, { type: 'error', error: { type: 'not_found_error', message: 'model: claude-haiku-5-5' }, request_id: 'req_1' })
+      : reply(FOLLOW, b.model)),
+  });
+  const res = mockRes();
+  await ai(mockReq({ body: { step: 'followup', payload: { questionId: 'q1', answer: 'x y z' } } }), res, { env: { ANTHROPIC_API_KEY: 'k' }, fetchImpl });
+  assert.equal(res.json().ok, true);
+  assert.deepEqual(calls, ['claude-haiku-5-5', 'claude-haiku-4-5']);
+});
+
+test('setup problems show a calm message to customers and a precise detail for the owner', async () => {
+  const cases = [
+    [401, 'authentication_error', /API key was rejected/],
+    [402, 'billing_error', /Billing problem/],
+    [403, 'permission_error', /isn't allowed/],
+    [400, 'invalid_request_error', /Spend limit reached/, 'Your workspace spend limit has been reached'],
+  ];
+  for (const [status, type, detailRe, msg = 'nope'] of cases) {
+    resetModelCache();
+    const { fetchImpl } = fakeAnthropic({ models: [M('claude-haiku-4-5'), M('claude-sonnet-5')], onMessage: () => json(status, { type: 'error', error: { type, message: msg }, request_id: 'req_x' }) });
+    const res = mockRes();
+    await ai(mockReq({ body: { step: 'followup', payload: { questionId: 'q1', answer: 'x y' } } }), res, { env: { ANTHROPIC_API_KEY: 'k' }, fetchImpl });
+    const j = res.json();
+    assert.equal(j.ok, false);
+    assert.doesNotMatch(j.error, /\d{3}|key|billing/i, `${type}: customer message stays non-technical`);
+    assert.match(j.detail, detailRe, type);
+  }
+});
+
+test('a rejected key is reported clearly even before any message is sent', async () => {
+  resetModelCache();
+  const fetchImpl = async () => json(401, { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } });
+  const res = mockRes();
+  await ai(mockReq({ body: { step: 'followup', payload: { questionId: 'q1', answer: 'x y' } } }), res, { env: { ANTHROPIC_API_KEY: 'bad' }, fetchImpl });
+  assert.match(res.json().detail, /API key was rejected/);
+});
+
+test('setup check reports the models in use and tests each one', async () => {
+  resetModelCache();
+  const { fetchImpl } = fakeAnthropic({ models: [M('claude-haiku-4-5'), M('claude-sonnet-5')], onMessage: (b) => reply({ ok: true }, b.model) });
+  const denied = mockRes();
+  const r1 = mockReq({ method: 'GET' }); r1.url = '/api/ai?check=1&code=wrong';
+  await ai(r1, denied, { env: { ANTHROPIC_API_KEY: 'k', ACCESS_CODE: 'right' }, fetchImpl });
+  assert.equal(denied.statusCode, 401);
+  const res = mockRes();
+  const r2 = mockReq({ method: 'GET' }); r2.url = '/api/ai?check=1&code=right';
+  await ai(r2, res, { env: { ANTHROPIC_API_KEY: 'k', ACCESS_CODE: 'right' }, fetchImpl });
+  const j = res.json();
+  assert.equal(j.ok, true);
+  assert.equal(j.fast, 'claude-haiku-4-5');
+  assert.equal(j.smart, 'claude-sonnet-5');
+  assert.equal(j.fastTest, 'working');
+  assert.equal(j.smartTest, 'working');
+});
+
+test('pricing covers dated snapshots and returns null for unknown models', () => {
+  assert.equal(costOf('claude-haiku-4-5-20251001', { input_tokens: 1e6 }), 1);
+  assert.equal(costOf('claude-sonnet-5', { output_tokens: 1e6 }), 10);
+  assert.equal(costOf('mystery-model', { input_tokens: 1 }), null);
 });
 
 test('bad requests get clear errors', async () => {

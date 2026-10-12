@@ -3,9 +3,9 @@
  * Everything the customer types stays in this browser (localStorage) unless they
  * download a progress file. The server only forwards text to the AI and never stores it.
  */
-import { QUESTIONS, MAX_FOLLOW_UPS_PER_QUESTION } from './shared/questions.js?v=0.1.1';
-import { LIMITS, evidenceLevel, EVIDENCE_LEVELS, suggestPrice, riskyPhrases } from './shared/rules.js?v=0.1.1';
-import { APP_VERSION, PROMPT_VERSION, DATA_SCHEMA } from './shared/version.js?v=0.1.1';
+import { QUESTIONS, MAX_FOLLOW_UPS_PER_QUESTION } from './shared/questions.js?v=0.1.2';
+import { LIMITS, evidenceLevel, EVIDENCE_LEVELS, suggestPrice, riskyPhrases } from './shared/rules.js?v=0.1.2';
+import { APP_VERSION, PROMPT_VERSION, DATA_SCHEMA } from './shared/version.js?v=0.1.2';
 
 const $ = (id) => document.getElementById(id);
 const view = $('view');
@@ -137,7 +137,7 @@ async function ai(step, payload, { limitKey = LIMIT_KEY[step], busy } = {}) {
       localStorage.removeItem(CODE_STORE); ui.server.accessRequired = true;
       state.step = 'welcome'; save();
     }
-    if (!j.ok) throw new Error(j.error || 'Something went wrong. Try again.');
+    if (!j.ok) throw new Error(`${j.error || 'Something went wrong. Try again.'}${DEBUG && j.detail ? ` Setup detail: ${j.detail}` : ''}`);
     if (limitKey) state.usage.calls[limitKey] = used(limitKey) + 1;
     const u = j.usage || {};
     state.usage.cost += u.cost || 0;

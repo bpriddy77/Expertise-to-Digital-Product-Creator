@@ -1,20 +1,23 @@
 /**
  * POST /api/ai  { step, payload }  →  { ok, data, usage, mode, promptVersion }
+ * POST /api/ai  { step: "verify" } →  checks the access code only (no AI call)
  * GET  /api/ai                     →  { mode, accessRequired, appVersion, promptVersion }
+ * GET  /api/ai?check=1&code=…      →  setup check for the owner: is the key working, which models are used
  *
  * Environment (Vercel → Settings → Environment Variables):
- *   ANTHROPIC_API_KEY  required for live AI
- *   AI_MODE            "mock" for test mode (no key, no cost). Defaults to live when a key is set.
- *   ACCESS_CODE        optional. When set, the page must send it (keeps strangers from using credits).
- *   MODEL_FAST / MODEL_SMART  optional model overrides.
+ *   ANTHROPIC_API_KEY  required for live AI (secret)
+ *   ACCESS_CODE        optional (secret). When set, the page must send it.
+ *   AI_MODE            "mock" forces test mode.
+ *   MODEL_FAST / MODEL_SMART  optional overrides; otherwise models are picked from what the key can use.
  *
  * Privacy: customer text is used only to build the AI request. It is never logged or stored here;
- * logs contain step, model, token counts and cost only.
+ * logs contain step, model, token counts, cost and error codes only.
  */
-import { SYSTEM, BUILDERS, stepConfig } from '../lib/prompts.js';
+import { SYSTEM, BUILDERS, stepConfig, ESTIMATE_MODELS } from '../lib/prompts.js';
 import { SCHEMAS } from '../lib/schemas.js';
 import { CLEAN } from '../lib/guardrails.js';
 import { callClaude, AIError } from '../lib/claude.js';
+import { resolveModels, markUnavailable } from '../lib/models.js';
 import { mockCall } from '../lib/mock.js';
 import { costOf } from '../lib/pricing.js';
 import { APP_VERSION, PROMPT_VERSION } from '../lib/version.js';
@@ -24,8 +27,9 @@ const MAX_BODY = 60_000; // characters
 
 export function aiMode(env = process.env) {
   if (env.AI_MODE === 'mock') return 'mock';
-  return env.ANTHROPIC_API_KEY ? 'live' : 'mock';
+  return String(env.ANTHROPIC_API_KEY ?? '').trim() ? 'live' : 'mock';
 }
+const keyOf = (env) => String(env.ANTHROPIC_API_KEY ?? '').trim();
 
 async function readBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -45,10 +49,54 @@ function send(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+/** Call Claude with the right model for the role; if a model turns out to be unavailable, pick again once. */
+async function callWithModels({ role, env, fetchImpl, ...args }) {
+  const apiKey = keyOf(env);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const models = await resolveModels({ apiKey, env, fetchImpl });
+    const model = models[role];
+    try {
+      return await callClaude({ apiKey, model, fetchImpl, ...args });
+    } catch (e) {
+      if (attempt === 0 && e instanceof AIError && e.apiType === 'not_found_error') {
+        console.log(JSON.stringify({ event: 'model_unavailable', model, requestId: e.requestId }));
+        markUnavailable(model);
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new AIError('The AI isn\'t available right now. Please try again a little later.', { status: 503, retryable: false, detail: 'No working model after retry.' });
+}
+
+/** Owner setup check: lists models, makes one tiny call per role. Costs a fraction of a cent. */
+async function setupCheck(env, fetchImpl) {
+  const out = { appVersion: APP_VERSION, mode: aiMode(env), accessCodeSet: accessRequired(env), keySet: Boolean(keyOf(env)) };
+  if (out.mode !== 'live') return { ...out, ok: true, note: 'Test mode: no API key in use, so there is nothing to check.' };
+  try {
+    const models = await resolveModels({ apiKey: keyOf(env), env, fetchImpl });
+    Object.assign(out, { modelsAvailable: models.available.length, fast: models.fast, smart: models.smart });
+    const schema = { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false };
+    for (const role of ['fast', 'smart']) {
+      const r = await callClaude({ apiKey: keyOf(env), model: models[role], system: 'Reply with JSON.', messages: [{ role: 'user', content: 'Say ok.' }], schema, maxTokens: 50, fetchImpl });
+      out[`${role}Test`] = r.data?.ok === true ? 'working' : 'unexpected reply';
+    }
+    return { ...out, ok: true };
+  } catch (e) {
+    return { ...out, ok: false, problem: e.detail || e.message, requestId: e.requestId || undefined };
+  }
+}
+
 export default async function handler(req, res, { env = process.env, fetchImpl } = {}) {
   const mode = aiMode(env);
 
   if (req.method === 'GET') {
+    const url = new URL(req.url || '/', 'http://x');
+    if (url.searchParams.has('check')) {
+      const fake = { headers: { 'x-access-code': url.searchParams.get('code') || '' } };
+      if (!accessOk(fake, env)) return send(res, 401, { ok: false, error: 'Add &code=YOUR_ACCESS_CODE to the address.' });
+      return send(res, 200, await setupCheck(env, fetchImpl));
+    }
     return send(res, 200, { mode, accessRequired: accessRequired(env), appVersion: APP_VERSION, promptVersion: PROMPT_VERSION });
   }
   if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'Use POST.' });
@@ -76,27 +124,32 @@ export default async function handler(req, res, { env = process.env, fetchImpl }
   } catch (e) {
     return send(res, 400, { ok: false, error: e.message });
   }
-  const cfg = stepConfig(step, env);
+  const cfg = stepConfig(step);
 
   try {
     const result = mode === 'mock'
-      ? mockCall(step, payload, { system: SYSTEM, messages })
-      : await callClaude({ apiKey: env.ANTHROPIC_API_KEY, model: cfg.model, system: SYSTEM, messages, schema: SCHEMAS[step], maxTokens: cfg.maxTokens, fetchImpl });
+      ? { ...mockCall(step, payload, { system: SYSTEM, messages }), model: ESTIMATE_MODELS[cfg.role] }
+      : await callWithModels({ role: cfg.role, env, fetchImpl, system: SYSTEM, messages, schema: SCHEMAS[step], maxTokens: cfg.maxTokens });
 
     const data = CLEAN[step](result.data, payload);
-    const pricedModel = mode === 'mock' ? cfg.model : result.model;
     const usage = {
-      model: pricedModel,
+      model: result.model,
       input_tokens: result.usage.input_tokens || 0,
       output_tokens: result.usage.output_tokens || 0,
-      cost: costOf(pricedModel, result.usage) ?? costOf(cfg.model, result.usage),
+      cost: costOf(result.model, result.usage),
       estimated: mode === 'mock',
     };
     console.log(JSON.stringify({ event: 'ai_call', step, mode, model: usage.model, in: usage.input_tokens, out: usage.output_tokens, cost: usage.cost }));
     return send(res, 200, { ok: true, step, data, usage, mode, promptVersion: PROMPT_VERSION });
   } catch (e) {
-    const status = e instanceof AIError ? e.status : 500;
-    console.log(JSON.stringify({ event: 'ai_error', step, mode, status, message: e.message }));
-    return send(res, status, { ok: false, error: e instanceof AIError ? e.message : 'Something went wrong. Try again.', retryable: e.retryable ?? true });
+    const known = e instanceof AIError;
+    const status = known ? e.status : 500;
+    console.log(JSON.stringify({ event: 'ai_error', step, mode, status, apiType: e.apiType, httpStatus: e.httpStatus, requestId: e.requestId, detail: e.detail || e.message }));
+    return send(res, status, {
+      ok: false,
+      error: known ? e.message : 'Something went wrong. Try again.',
+      retryable: e.retryable ?? true,
+      detail: known ? e.detail || undefined : undefined, // shown on the page only with ?debug=1
+    });
   }
 }

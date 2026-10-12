@@ -6,6 +6,16 @@ Semantic versioning. Versions live in `public/shared/version.js`; keep `package.
 - **PROMPT_VERSION**: the AI instructions and response formats. Bump whenever a prompt or schema changes.
 - **DATA_SCHEMA**: the shape of saved projects.
 
+## [0.1.2] - 2026-10-12
+### Fixed
+- **"The AI request failed (404)".** Anthropic returns 404 when the API key can't use the model name requested. The tool no longer relies on fixed model names: it asks Anthropic which models the key can use (`GET /v1/models`) and picks the best available: Haiku for the quick answer check, Sonnet for everything written. Preferred: `claude-haiku-5-5` / `claude-sonnet-5-5`, then older versions, then the newest model in the right family. Models without structured-output support or that are retired are skipped. If a model still returns 404, it's skipped and the next one is tried automatically.
+### Added
+- **Setup check** for the owner: open `/api/ai?check=1&code=YOUR_ACCESS_CODE`. Shows whether the key works, which models are in use, and runs one tiny test call per model (a fraction of a cent).
+- Clear setup messages: customers see a calm "The AI isn't available right now"; the owner sees the exact cause (key rejected, billing, permission, model unavailable, spend limit) in Vercel logs, in the setup check, and on the page with `?debug=1`. Anthropic's request ID is logged for support.
+- Prices for older models in the cost meter (Sonnet 5, 4.6, 4.5; Haiku 4.5; Opus), including dated snapshots.
+- `MODEL_FAST` / `MODEL_SMART` are now optional overrides used only if the key can use them.
+- 6 new tests (31 total).
+
 ## [0.1.1] - 2026-10-12
 ### Fixed
 - **Access code is now checked on the welcome screen.** Previously any code let you past Start, and the code was only checked on the first AI request. Now Start verifies the code with the server first (no AI call, no cost); a wrong code shows "That access code doesn't match" and stays on the welcome screen. Enter submits the code.

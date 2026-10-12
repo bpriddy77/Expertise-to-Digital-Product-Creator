@@ -1,6 +1,6 @@
 # DP-001 — Expertise-to-Digital-Product Creator (proof of concept)
 
-**Version 0.1.1** (AI instructions 1.0.0, data schema 1). See `CHANGELOG.md`.
+**Version 0.1.2** (AI instructions 1.0.0, data schema 1). See `CHANGELOG.md`.
 
 A guided, AI-assisted tool that helps a customer find expertise they're good at **and** enjoy, shape it into a product idea, check the market, and leave with an editable first version of a **workbook**, plus a product summary with a description, a starting price to test and a launch checklist.
 
@@ -12,7 +12,7 @@ This proof of concept answers two questions before the full build:
 
 ```bash
 npm install
-npm test            # 25 server tests (prompts, guardrails, schemas, cost, exports)
+npm test            # 31 server tests (prompts, guardrails, schemas, cost, exports)
 npm run dev         # http://localhost:8790, test mode: sample AI responses, no key, no cost
 ANTHROPIC_API_KEY=sk-ant-... npm run dev     # live AI
 ```
@@ -32,9 +32,23 @@ Add `?debug=1` to the URL to show the **AI cost meter**: calls per step, tokens 
 | `ANTHROPIC_API_KEY` | For live AI | Kept on the server only, never sent to the browser. Without it the tool runs in test mode. |
 | `ACCESS_CODE` | Recommended for testing | Testers enter it once on the welcome screen; the server checks it before anyone gets in. Stops strangers spending your AI credits until paid access is built. After changing it, **redeploy** so the new value takes effect. |
 | `AI_MODE` | Optional | `mock` forces test mode even with a key. |
-| `MODEL_FAST` / `MODEL_SMART` | Optional | Defaults: `claude-haiku-5-5` for the quick answer check, `claude-sonnet-5-5` for everything written. |
+| `MODEL_FAST` / `MODEL_SMART` | Optional | Leave unset. The tool picks from the models your key can use: Haiku for the quick answer check, Sonnet for everything written (prefers `claude-haiku-5-5` / `claude-sonnet-5-5`). Set these only to force a specific model. |
 
 3. Redeploy. The footer shows the version; a gold "Test mode" banner appears whenever the AI isn't live.
+4. **Run the setup check:** open `https://YOUR-SITE/api/ai?check=1&code=YOUR_ACCESS_CODE`. You should see `"ok": true`, the two models in use, and `"working"` for both tests.
+
+## Troubleshooting
+
+| What you see | What to do |
+|---|---|
+| "The AI isn't available right now" | Open the setup check above. It names the cause. Add `?debug=1` to the page address to see the same detail on screen. |
+| Setup check: "API key was rejected" | Re-copy the key into `ANTHROPIC_API_KEY` (no spaces), save, redeploy. |
+| Setup check: "Billing problem" | Add a payment method or credits in the Claude Console. |
+| Setup check: "Spend limit reached" | Raise the workspace limit in the Claude Console (Settings → Workspaces → Limits). |
+| Setup check: "isn't allowed to use that model or workspace" | Check which workspace the key belongs to in the Claude Console. |
+| Gold "Test mode" banner on the live site | `ANTHROPIC_API_KEY` isn't set for this environment, or the site wasn't redeployed after adding it. |
+
+Vercel → your project → Logs shows one line per AI call (step, model, tokens, cost) and per error (cause and Anthropic request ID). Customer text is never logged.
 
 ## The journey
 
