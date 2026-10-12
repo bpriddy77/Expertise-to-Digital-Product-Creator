@@ -3,9 +3,9 @@
  * Everything the customer types stays in this browser (localStorage) unless they
  * download a progress file. The server only forwards text to the AI and never stores it.
  */
-import { QUESTIONS, MAX_FOLLOW_UPS_PER_QUESTION } from './shared/questions.js?v=0.1.0';
-import { LIMITS, evidenceLevel, EVIDENCE_LEVELS, suggestPrice, riskyPhrases } from './shared/rules.js?v=0.1.0';
-import { APP_VERSION, PROMPT_VERSION, DATA_SCHEMA } from './shared/version.js?v=0.1.0';
+import { QUESTIONS, MAX_FOLLOW_UPS_PER_QUESTION } from './shared/questions.js?v=0.1.1';
+import { LIMITS, evidenceLevel, EVIDENCE_LEVELS, suggestPrice, riskyPhrases } from './shared/rules.js?v=0.1.1';
+import { APP_VERSION, PROMPT_VERSION, DATA_SCHEMA } from './shared/version.js?v=0.1.1';
 
 const $ = (id) => document.getElementById(id);
 const view = $('view');
@@ -132,7 +132,11 @@ async function ai(step, payload, { limitKey = LIMIT_KEY[step], busy } = {}) {
       throw new Error('Could not connect. Check your internet connection and try again.');
     }
     const j = await res.json().catch(() => ({ ok: false, error: 'Something went wrong. Try again.' }));
-    if (res.status === 401) { localStorage.removeItem(CODE_STORE); ui.server.accessRequired = true; }
+    if (res.status === 401) {
+      // Code missing or changed: send them back to the welcome screen to enter it.
+      localStorage.removeItem(CODE_STORE); ui.server.accessRequired = true;
+      state.step = 'welcome'; save();
+    }
     if (!j.ok) throw new Error(j.error || 'Something went wrong. Try again.');
     if (limitKey) state.usage.calls[limitKey] = used(limitKey) + 1;
     const u = j.usage || {};
@@ -147,6 +151,28 @@ async function ai(step, payload, { limitKey = LIMIT_KEY[step], busy } = {}) {
   } finally {
     ui.busy = null;
   }
+}
+
+/** Checks the access code with the server before letting anyone in. No AI call, no cost. */
+async function verifyCode() {
+  const code = ($('accessCode')?.value || localStorage.getItem(CODE_STORE) || '').trim();
+  if (!code) { ui.error = 'Enter your access code to continue.'; ui.retry = null; render(); return false; }
+  try {
+    const res = await fetch('api/ai', { method: 'POST', headers: { 'content-type': 'application/json', 'x-access-code': code }, body: JSON.stringify({ step: 'verify' }) });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && j.ok) {
+      try { localStorage.setItem(CODE_STORE, code); } catch { /* storage blocked */ }
+      ui.error = null;
+      return true;
+    }
+    try { localStorage.removeItem(CODE_STORE); } catch { /* ignore */ }
+    ui.error = j.error || 'That access code doesn\'t match. Check your purchase email and try again.';
+  } catch {
+    ui.error = 'Could not connect. Check your internet connection and try again.';
+  }
+  ui.retry = null; render();
+  $('accessCode')?.focus();
+  return false;
 }
 
 async function run(fn, retry) {
@@ -623,11 +649,10 @@ view.addEventListener('input', (e) => {
   } else if (t.dataset.rejectReason) {
     const r = state.rejected.find((x) => x.name === t.dataset.rejectReason);
     if (r) { r.reason = t.value; save(); }
-  } else if (t.id === 'accessCode') {
-    try { localStorage.setItem(CODE_STORE, t.value.trim()); } catch { /* ignore */ }
   }
 });
 view.addEventListener('keydown', (e) => {
+  if (e.target.id === 'accessCode' && e.key === 'Enter') { e.preventDefault(); view.querySelector('[data-act=start]')?.click(); return; }
   if (e.target.dataset.edit && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.blur(); }
 });
 
@@ -675,7 +700,7 @@ document.addEventListener('click', async (e) => {
 
   switch (d.act) {
     case 'start': {
-      if (ui.server.accessRequired && !localStorage.getItem(CODE_STORE)) { ui.error = 'Enter your access code to continue.'; return render(); }
+      if (ui.server.accessRequired && !(await verifyCode())) return;
       return go(state.lastStep && reachable(state.lastStep) ? state.lastStep : 'discover');
     }
     case 'reset':

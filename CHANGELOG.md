@@ -6,6 +6,13 @@ Semantic versioning. Versions live in `public/shared/version.js`; keep `package.
 - **PROMPT_VERSION**: the AI instructions and response formats. Bump whenever a prompt or schema changes.
 - **DATA_SCHEMA**: the shape of saved projects.
 
+## [0.1.1] - 2026-10-12
+### Fixed
+- **Access code is now checked on the welcome screen.** Previously any code let you past Start, and the code was only checked on the first AI request. Now Start verifies the code with the server first (no AI call, no cost); a wrong code shows "That access code doesn't match" and stays on the welcome screen. Enter submits the code.
+- If the code stops working mid-project (for example it was changed in Vercel), the page returns to the welcome screen to re-enter it. Progress is kept.
+- The code is compared in constant time and ignores stray spaces on either side. A blank `ACCESS_CODE` means no code is required.
+- 2 new tests (25 total).
+
 ## [0.1.0] - 2026-10-12
 First proof of concept of DP-001, built to the original brief (workbook format only).
 ### Added

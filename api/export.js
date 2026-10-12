@@ -3,6 +3,7 @@
  * No AI and no cost. Nothing is stored.
  */
 import { buildWorkbookDoc, buildSummaryDoc, toBuffer } from '../lib/docx-builder.js';
+import { accessOk } from '../lib/access.js';
 
 const MAX_BODY = 400_000;
 
@@ -26,7 +27,7 @@ export default async function handler(req, res, { env = process.env } = {}) {
     res.end(JSON.stringify({ ok: false, error }));
   };
   if (req.method !== 'POST') return fail(405, 'Use POST.');
-  if (env.ACCESS_CODE && req.headers['x-access-code'] !== env.ACCESS_CODE) return fail(401, 'Enter your access code to continue.');
+  if (!accessOk(req, env)) return fail(401, 'That access code doesn\'t match. Check your purchase email and try again.');
 
   let body;
   try { body = await readBody(req); } catch { return fail(400, 'The export request could not be read.'); }

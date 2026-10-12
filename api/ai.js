@@ -18,6 +18,7 @@ import { callClaude, AIError } from '../lib/claude.js';
 import { mockCall } from '../lib/mock.js';
 import { costOf } from '../lib/pricing.js';
 import { APP_VERSION, PROMPT_VERSION } from '../lib/version.js';
+import { accessOk, accessRequired } from '../lib/access.js';
 
 const MAX_BODY = 60_000; // characters
 
@@ -48,12 +49,12 @@ export default async function handler(req, res, { env = process.env, fetchImpl }
   const mode = aiMode(env);
 
   if (req.method === 'GET') {
-    return send(res, 200, { mode, accessRequired: Boolean(env.ACCESS_CODE), appVersion: APP_VERSION, promptVersion: PROMPT_VERSION });
+    return send(res, 200, { mode, accessRequired: accessRequired(env), appVersion: APP_VERSION, promptVersion: PROMPT_VERSION });
   }
   if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'Use POST.' });
 
-  if (env.ACCESS_CODE && req.headers['x-access-code'] !== env.ACCESS_CODE) {
-    return send(res, 401, { ok: false, error: 'Enter your access code to continue.', code: 'access' });
+  if (!accessOk(req, env)) {
+    return send(res, 401, { ok: false, error: 'That access code doesn\'t match. Check your purchase email and try again.', code: 'access' });
   }
 
   let body;
@@ -65,6 +66,8 @@ export default async function handler(req, res, { env = process.env, fetchImpl }
   if (JSON.stringify(body).length > MAX_BODY) return send(res, 413, { ok: false, error: 'That is too much text to send at once.' });
 
   const { step, payload = {} } = body;
+  // "verify" only checks the access code (above). No AI call, no cost.
+  if (step === 'verify') return send(res, 200, { ok: true, mode });
   if (!BUILDERS[step]) return send(res, 400, { ok: false, error: 'Unknown step.' });
 
   let messages;

@@ -1,6 +1,6 @@
 # DP-001 — Expertise-to-Digital-Product Creator (proof of concept)
 
-**Version 0.1.0** (AI instructions 1.0.0, data schema 1). See `CHANGELOG.md`.
+**Version 0.1.1** (AI instructions 1.0.0, data schema 1). See `CHANGELOG.md`.
 
 A guided, AI-assisted tool that helps a customer find expertise they're good at **and** enjoy, shape it into a product idea, check the market, and leave with an editable first version of a **workbook**, plus a product summary with a description, a starting price to test and a launch checklist.
 
@@ -12,12 +12,13 @@ This proof of concept answers two questions before the full build:
 
 ```bash
 npm install
-npm test            # 23 server tests (prompts, guardrails, schemas, cost, exports)
+npm test            # 25 server tests (prompts, guardrails, schemas, cost, exports)
 npm run dev         # http://localhost:8790, test mode: sample AI responses, no key, no cost
 ANTHROPIC_API_KEY=sk-ant-... npm run dev     # live AI
 ```
 
 Browser test of the full journey (needs Playwright): `python3 test/e2e.py http://localhost:8790` (36 checks).
+Access-code test: run a preview with `ACCESS_CODE=pig-test-42 PORT=8791 npm run dev`, then `python3 test/access-e2e.py` (11 checks).
 
 Add `?debug=1` to the URL to show the **AI cost meter**: calls per step, tokens and dollars.
 
@@ -29,7 +30,7 @@ Add `?debug=1` to the URL to show the **AI cost meter**: calls per step, tokens 
 | Variable | Required | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | For live AI | Kept on the server only, never sent to the browser. Without it the tool runs in test mode. |
-| `ACCESS_CODE` | Recommended for testing | Testers enter it once. Stops strangers spending your AI credits until paid access is built. |
+| `ACCESS_CODE` | Recommended for testing | Testers enter it once on the welcome screen; the server checks it before anyone gets in. Stops strangers spending your AI credits until paid access is built. After changing it, **redeploy** so the new value takes effect. |
 | `AI_MODE` | Optional | `mock` forces test mode even with a key. |
 | `MODEL_FAST` / `MODEL_SMART` | Optional | Defaults: `claude-haiku-5-5` for the quick answer check, `claude-sonnet-5-5` for everything written. |
 

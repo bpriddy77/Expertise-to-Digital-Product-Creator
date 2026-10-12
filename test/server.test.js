@@ -192,6 +192,25 @@ test('test-mode strengths quote the customer\'s actual words', async () => {
   for (const s of data.strengths) for (const e of s.evidence) assert.ok(quoteIsGenuine(e.quote, e.question_id, answers));
 });
 
+test('verify step checks the code without calling the AI', async () => {
+  const env = { ACCESS_CODE: 'pig-test-42' };
+  const bad = mockRes(); await ai(mockReq({ body: { step: 'verify' }, headers: { 'x-access-code': 'anything' } }), bad, { env });
+  assert.equal(bad.statusCode, 401);
+  assert.match(bad.json().error, /doesn't match/);
+  const none = mockRes(); await ai(mockReq({ body: { step: 'verify' } }), none, { env });
+  assert.equal(none.statusCode, 401);
+  const good = mockRes(); await ai(mockReq({ body: { step: 'verify' }, headers: { 'x-access-code': ' pig-test-42 ' } }), good, { env });
+  assert.equal(good.statusCode, 200, 'surrounding spaces are ignored');
+  const open = mockRes(); await ai(mockReq({ body: { step: 'verify' } }), open, { env: { ACCESS_CODE: '  ' } });
+  assert.equal(open.statusCode, 200, 'a blank ACCESS_CODE means no code is required');
+});
+
+test('exports also require the access code', async () => {
+  const res = mockRes();
+  await exporter(mockReq({ body: { kind: 'workbook', project: {} }, headers: { 'x-access-code': 'wrong' } }), res, { env: { ACCESS_CODE: 'right' } });
+  assert.equal(res.statusCode, 401);
+});
+
 test('access code is enforced when set', async () => {
   const res = mockRes();
   await ai(mockReq({ body: { step: 'followup', payload: { questionId: 'q1', answer: 'x' } } }), res, { env: { ACCESS_CODE: 'abc' } });
