@@ -6,6 +6,28 @@ Semantic versioning. Versions live in `public/shared/version.js`; keep `package.
 - **PROMPT_VERSION**: the AI instructions and response formats. Bump whenever a prompt or schema changes.
 - **DATA_SCHEMA**: the shape of saved projects.
 
+## [0.6.0] - 2026-10-14
+Complete redesign as the **Authority Funnel Map**, built backward from the approved map (prototype v0.5.0). Source of truth: Product Knowledge Base (Oct 13, 2026), Revised Requirements V2, and Malissa's decisions of Oct 14.
+### Added
+- Guided interview: 5 stages, 13 questions (3 optional), one at a time, with examples, skip, back, edit from review, progress by stage, and autosave. After each answer the AI may ask one follow-up and tailors the next question's examples to the owner's business; if the AI is unavailable the interview continues.
+- Authority Funnel Map generation (schema `opportunity-map/2`): 1 to 5 products in main / bump / upsell / downsell / one-time offer positions leading to the signature offer, other ideas as lead magnet / onboarding / keep inside your offer, journey board, connections, first test, summary.
+- Pricing and average order value: published ranges per position, three price sets, goal per sale ($50 / $100 / $250 / $500) with conservative / expected / stretch estimates (same take rates as the revenue calculator).
+- Safety checks: facts must quote the owner's words or become assumptions; funnel prices kept inside the published ranges; income-claim wording removed; customer text cannot break out of its tags; every AI map validated before display.
+- Accounts without passwords: HighLevel purchase webhook creates the buyer and writes a signed personal link into the contact field *Authority Map Link*; "Email me my link" re-sends it through a HighLevel tag workflow. Works on any device.
+- Saving to Supabase (tables locked to the server) with a browser backup that recovers unsaved work after a dropped connection.
+- Share with Priddy Impact Group: adds the funnel summary and a read-only link as a note on the HighLevel contact, plus a tag; sharing can be stopped.
+- Export: PDF (5-page landscape print layout) and PNG image.
+- Delete my data; automatic deletion after 12 months without a visit (daily Vercel cron).
+- Owner setup check `/api/check?key=…` for AI, database and HighLevel.
+- Per-buyer limits on AI use (120 calls, 8 fresh maps by default).
+- Example map on the welcome page; demo mode for local testing only.
+- 21 server tests and a 34-check browser journey test.
+### Changed
+- App price $9. Audience: established businesses of any kind (services, coaching, consulting, product sellers).
+- PROMPT_VERSION 2.0.0, DATA_SCHEMA `opportunity-map/2`.
+### Removed
+- Workbook builder, Word exports, price suggestion from comparables, lifestyle preferences, shared access code (moved to `archive/poc-v0.1.2/`).
+
 ## [0.1.2] - 2026-10-12
 ### Fixed
 - **"The AI request failed (404)".** Anthropic returns 404 when the API key can't use the model name requested. The tool no longer relies on fixed model names: it asks Anthropic which models the key can use (`GET /v1/models`) and picks the best available: Haiku for the quick answer check, Sonnet for everything written. Preferred: `claude-haiku-5-5` / `claude-sonnet-5-5`, then older versions, then the newest model in the right family. Models without structured-output support or that are retired are skipped. If a model still returns 404, it's skipped and the next one is tried automatically.

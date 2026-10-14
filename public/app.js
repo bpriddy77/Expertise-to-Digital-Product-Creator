@@ -1,794 +1,579 @@
 /**
- * Expertise-to-Digital-Product Creator — page logic (proof of concept).
- * Everything the customer types stays in this browser (localStorage) unless they
- * download a progress file. The server only forwards text to the AI and never stores it.
+ * Authority Funnel Map app (v0.6.0).
+ * Screens: welcome (no link) → intro → interview (5 stages) → review → generating → map.
+ * Shared maps open read-only with ?view=<token>. Work saves to the buyer's account automatically,
+ * with a copy kept in this browser in case the connection drops.
  */
-import { QUESTIONS, MAX_FOLLOW_UPS_PER_QUESTION } from './shared/questions.js?v=0.1.2';
-import { LIMITS, evidenceLevel, EVIDENCE_LEVELS, suggestPrice, riskyPhrases } from './shared/rules.js?v=0.1.2';
-import { APP_VERSION, PROMPT_VERSION, DATA_SCHEMA } from './shared/version.js?v=0.1.2';
+import { STAGES, QUESTIONS, readyToMap, ESSENTIAL, LIMITS_INTERVIEW } from './shared/interview.js';
+import { AOV_GOALS } from './shared/map-model.js';
+import { EXAMPLE_MAP } from './shared/example-map.js';
+import { CONFIG } from './shared/config.js';
+import { APP_VERSION } from './shared/version.js';
+import { mountMap, unmountMap, currentMap, showToast } from './map-view.js';
 
-const $ = (id) => document.getElementById(id);
-const view = $('view');
-const STORE = 'pig-dp001-project';
-const CODE_STORE = 'pig-dp001-access';
-const DEBUG = new URLSearchParams(location.search).has('debug');
-
-const STEPS = [
-  { key: 'welcome', label: 'Start' },
-  { key: 'discover', label: 'Discover' },
-  { key: 'strengths', label: 'Your strength' },
-  { key: 'preferences', label: 'Preferences' },
-  { key: 'ideas', label: 'Product ideas' },
-  { key: 'validate', label: 'Market check' },
-  { key: 'build', label: 'Build' },
-  { key: 'review', label: 'Review & export' },
-];
-
-const ENJOY = ['Teaching and explaining', 'Writing', 'Organizing and systems', 'Making templates and tools', 'Research', 'Working one-on-one', 'Speaking or video'];
-const AVOID = ['Live calls', 'Being on camera', 'Lots of writing', 'Ongoing customer support', 'Posting on social media daily', 'Complicated tech setup'];
-const HOURS = ['Under 2 hours', '2–5 hours', '5–10 hours', '10+ hours'];
-const INVOLVEMENT = ['Hands-off: sell it and let it run', 'Some live touchpoints are fine', 'I enjoy working with people directly'];
-
-/* ---------- State ---------- */
-
-const blank = () => ({
-  schema: DATA_SCHEMA,
-  appVersion: APP_VERSION,
-  promptVersion: PROMPT_VERSION,
-  createdAt: new Date().toISOString(),
-  step: 'welcome',
-  qIndex: 0,
-  answers: {},
-  strengthList: [],
-  thinNote: '',
-  rejected: [],
-  pick: null,
-  correction: '',
-  strength: null,
-  lifestyle: { enjoy: [], avoid: [], hours: '', involvement: '', notes: '' },
-  ideas: [],
-  idea: null,
-  validation: { comparables: [{}, {}, {}], questions: ['', '', ''], signals: { askedForHelp: '', waitlist: '', presales: '', paidClients: '' } },
-  outline: null,
-  sections: {},
-  previous: {},
-  summary: null,
-  priceOverride: '',
-  author: '',
-  usage: { calls: {}, cost: 0, tokensIn: 0, tokensOut: 0, estimated: false },
-});
-
-let state = load() || blank();
-const ui = { busy: null, error: null, retry: null, server: { mode: 'unknown', accessRequired: false }, writing: new Set() };
-
-function load() {
-  try {
-    const s = JSON.parse(localStorage.getItem(STORE) || 'null');
-    return s && s.schema === DATA_SCHEMA ? { ...blank(), ...s } : null;
-  } catch { return null; }
-}
-let saveTimer;
-function save(now = false) {
-  clearTimeout(saveTimer);
-  const go = () => { try { localStorage.setItem(STORE, JSON.stringify({ ...state, appVersion: APP_VERSION })); } catch { /* storage blocked */ } };
-  if (now) go(); else saveTimer = setTimeout(go, 400);
-}
-
-/* ---------- Helpers ---------- */
-
+const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const money = (v) => `$${Number(v).toFixed(Number.isInteger(Number(v)) ? 0 : 2)}`;
-const getPath = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
-function setPath(obj, path, v) {
-  const keys = path.split('.'); let o = obj;
-  keys.slice(0, -1).forEach((k) => { if (o[k] == null) o[k] = /^\d+$/.test(k) ? [] : {}; o = o[k]; });
-  o[keys.at(-1)] = v;
-}
-function toast(msg) {
-  const t = $('toast'); t.textContent = msg; t.hidden = false;
-  clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2600);
-}
-const answered = (id) => (state.answers[id]?.answer || '').trim() !== '';
-const allAnswered = () => QUESTIONS.every((q) => answered(q.id));
-const used = (k) => state.usage.calls[k] || 0;
-const left = (k) => Math.max(0, LIMITS[k] - used(k));
-const sectionsDone = () => state.outline && state.outline.sections.every((s) => state.sections[s.id]?.blocks?.length);
+const app = $('#app');
+const TOKEN_KEY = 'afm-token';
+const params = new URLSearchParams(location.search);
+const DEBUG = params.has('debug');
 
-function reachable(key) {
-  switch (key) {
-    case 'welcome': case 'discover': return true;
-    case 'strengths': return allAnswered();
-    case 'preferences': case 'ideas': return Boolean(state.strength);
-    case 'validate': case 'build': return Boolean(state.idea);
-    case 'review': return Boolean(sectionsDone());
-    default: return false;
-  }
-}
-function go(key) {
-  if (!reachable(key)) return;
-  state.step = key; ui.error = null;
-  if (key !== 'welcome') state.lastStep = key;
-  save();
-  render();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  autoStart();
-}
-
-/* ---------- AI calls ---------- */
-
-const LIMIT_KEY = { followup: 'followups', strengths: 'strengths', ideas: 'ideas', outline: 'outline', section: 'sections', regenerate: 'regenerations', summary: 'summary' };
-
-async function ai(step, payload, { limitKey = LIMIT_KEY[step], busy } = {}) {
-  if (limitKey && left(limitKey) <= 0) throw new Error('You have used all the AI requests for this step in this version. You can still edit everything by hand.');
-  ui.busy = busy || null; ui.error = null; render();
-  try {
-    const headers = { 'content-type': 'application/json' };
-    const code = localStorage.getItem(CODE_STORE);
-    if (code) headers['x-access-code'] = code;
-    let res;
-    try {
-      res = await fetch('api/ai', { method: 'POST', headers, body: JSON.stringify({ step, payload }) });
-    } catch {
-      throw new Error('Could not connect. Check your internet connection and try again.');
-    }
-    const j = await res.json().catch(() => ({ ok: false, error: 'Something went wrong. Try again.' }));
-    if (res.status === 401) {
-      // Code missing or changed: send them back to the welcome screen to enter it.
-      localStorage.removeItem(CODE_STORE); ui.server.accessRequired = true;
-      state.step = 'welcome'; save();
-    }
-    if (!j.ok) throw new Error(`${j.error || 'Something went wrong. Try again.'}${DEBUG && j.detail ? ` Setup detail: ${j.detail}` : ''}`);
-    if (limitKey) state.usage.calls[limitKey] = used(limitKey) + 1;
-    const u = j.usage || {};
-    state.usage.cost += u.cost || 0;
-    state.usage.tokensIn += u.input_tokens || 0;
-    state.usage.tokensOut += u.output_tokens || 0;
-    state.usage.estimated = state.usage.estimated || Boolean(u.estimated);
-    (state.usage.log ||= []).push({ step, model: u.model, in: u.input_tokens, out: u.output_tokens, cost: u.cost });
-    state.promptVersion = j.promptVersion || state.promptVersion;
-    save();
-    return j.data;
-  } finally {
-    ui.busy = null;
-  }
-}
-
-/** Checks the access code with the server before letting anyone in. No AI call, no cost. */
-async function verifyCode() {
-  const code = ($('accessCode')?.value || localStorage.getItem(CODE_STORE) || '').trim();
-  if (!code) { ui.error = 'Enter your access code to continue.'; ui.retry = null; render(); return false; }
-  try {
-    const res = await fetch('api/ai', { method: 'POST', headers: { 'content-type': 'application/json', 'x-access-code': code }, body: JSON.stringify({ step: 'verify' }) });
-    const j = await res.json().catch(() => ({}));
-    if (res.ok && j.ok) {
-      try { localStorage.setItem(CODE_STORE, code); } catch { /* storage blocked */ }
-      ui.error = null;
-      return true;
-    }
-    try { localStorage.removeItem(CODE_STORE); } catch { /* ignore */ }
-    ui.error = j.error || 'That access code doesn\'t match. Check your purchase email and try again.';
-  } catch {
-    ui.error = 'Could not connect. Check your internet connection and try again.';
-  }
-  ui.retry = null; render();
-  $('accessCode')?.focus();
-  return false;
-}
-
-async function run(fn, retry) {
-  try {
-    await fn();
-  } catch (e) {
-    ui.error = e.message; ui.retry = retry || null;
-  }
-  render();
-}
-
-/* ---------- Step actions ---------- */
-
-async function nextQuestion() {
-  const q = QUESTIONS[state.qIndex];
-  const a = (state.answers[q.id] ||= {});
-  if (!(a.answer || '').trim()) { ui.error = 'Write a few words first. "I\'m not sure" is a fine start, and the next question can help.'; ui.retry = null; render(); return; }
-  if (!a.checked && left('followups') > 0 && MAX_FOLLOW_UPS_PER_QUESTION > 0) {
-    await run(async () => {
-      const d = await ai('followup', { questionId: q.id, answer: a.answer }, { busy: 'Reading your answer…' });
-      a.checked = true;
-      a.ack = d.acknowledgement;
-      a.followUpQuestion = d.needs_follow_up ? d.follow_up_question : '';
-      if (!a.followUpQuestion) advanceQuestion();
-    }, nextQuestion);
-    return;
-  }
-  advanceQuestion();
-}
-function advanceQuestion() {
-  state.qIndex = Math.min(QUESTIONS.length, state.qIndex + 1);
-  save(); render();
-  view.querySelector('textarea')?.focus();
-}
-
-async function findStrengths({ different = false } = {}) {
-  await run(async () => {
-    const d = await ai('strengths', { answers: state.answers, rejected: state.rejected }, { busy: different ? 'Looking for different strengths…' : 'Looking for strengths in what you shared…' });
-    state.strengthList = d.strengths;
-    state.thinNote = d.thin_evidence_note;
-    state.pick = null; state.correction = '';
-  }, () => findStrengths({ different }));
-}
-
-async function findIdeas() {
-  await run(async () => {
-    const d = await ai('ideas', { strength: state.strength, lifestyle: state.lifestyle, answers: state.answers }, { busy: 'Shaping workbook ideas around your strength…' });
-    state.ideas = d.ideas;
-  }, findIdeas);
-}
-
-async function makeOutline() {
-  await run(async () => {
-    const d = await ai('outline', { strength: state.strength, idea: state.idea, answers: state.answers }, { busy: 'Planning your workbook…' });
-    state.outline = d; state.sections = {}; state.previous = {}; state.summary = null;
-  }, makeOutline);
-}
-
-async function writeSection(id, { instruction = '' } = {}) {
-  const regenerate = Boolean(state.sections[id]?.blocks?.length);
-  const limitKey = regenerate ? 'regenerations' : 'sections';
-  ui.writing.add(id); render();
-  try {
-    const payload = { strength: state.strength, idea: state.idea, answers: state.answers, outline: state.outline, sectionId: id, instruction };
-    if (regenerate) payload.previousText = blocksToText(state.sections[id].blocks);
-    const d = await ai('section', payload, { limitKey });
-    if (regenerate) state.previous[id] = state.sections[id];
-    state.sections[id] = d;
-    state.summary = null;
-    save();
-  } finally {
-    ui.writing.delete(id);
-  }
-}
-
-async function writeAll() {
-  await run(async () => {
-    for (const s of state.outline.sections) {
-      if (!state.sections[s.id]?.blocks?.length) await writeSection(s.id);
-      render();
-    }
-  }, writeAll);
-}
-
-async function makeSummary() {
-  await run(async () => {
-    state.summary = await ai('summary', { strength: state.strength, idea: state.idea, outline: state.outline }, { busy: 'Writing your product description and launch checklist…' });
-  }, makeSummary);
-}
-
-function autoStart() {
-  if (ui.busy || ui.error) return;
-  if (state.step === 'strengths' && !state.strengthList.length && left('strengths') === LIMITS.strengths) findStrengths();
-  if (state.step === 'ideas' && !state.ideas.length && left('ideas') === LIMITS.ideas) findIdeas();
-  if (state.step === 'build' && !state.outline && left('outline') === LIMITS.outline) makeOutline();
-  if (state.step === 'review' && !state.summary && left('summary') === LIMITS.summary) makeSummary();
-}
-
-/* ---------- Rendering ---------- */
-
-function renderProgress() {
-  const i = STEPS.findIndex((s) => s.key === state.step);
-  $('progress').innerHTML = `<ol>${STEPS.map((s, n) => `
-    <li class="${n < i ? 'done' : ''} ${n === i ? 'current' : ''}">
-      <button type="button" data-go="${s.key}" ${reachable(s.key) ? '' : 'disabled'} aria-current="${n === i ? 'step' : 'false'}">
-        <span class="bar"></span><span class="lbl">${s.label}</span>
-      </button>
-    </li>`).join('')}</ol>
-    <p class="mobile-label">Step ${i + 1} of ${STEPS.length}: ${STEPS[i].label}</p>`;
-}
-
-function renderBanner() {
-  $('banner').innerHTML = ui.server.mode === 'mock'
-    ? '<div class="banner"><b>Test mode.</b> The AI isn\'t connected, so you\'ll see sample responses. Costs shown are estimates.</div>'
-    : '';
-}
-
-const busyBox = () => (ui.busy ? `<div class="thinking"><span class="spin" aria-hidden="true"></span>${esc(ui.busy)}</div>` : '');
-const errorBox = () => (ui.error ? `<div class="error" role="alert"><span>${esc(ui.error)}</span>${ui.retry ? '<button type="button" class="btn small" data-act="retry">Try again</button>' : ''}</div>` : '');
-const leftNote = (k) => `<span class="left-count">${left(k)} of ${LIMITS[k]} left</span>`;
-
-const VIEWS = {
-  welcome() {
-    const started = Object.keys(state.answers).length > 0;
-    const needCode = ui.server.accessRequired && !localStorage.getItem(CODE_STORE);
-    return `<section class="card">
-      <p class="eyebrow-step">${started ? 'Welcome back' : 'Let\'s begin'}</p>
-      <h2>${started ? 'Pick up where you left off' : 'Turn what you know into your first digital product'}</h2>
-      <p class="lead">You'll answer a few questions about your real experience. Then we'll find a strength you're good at <i>and</i> enjoy, shape it into a workbook idea, and write the first version with you. Plan on about 30–45 minutes. Your progress saves as you go.</p>
-      <ol class="small" style="margin:0 0 18px;padding-left:20px;line-height:1.9">
-        <li>Answer 5 questions about your experience</li>
-        <li>Confirm the strength that fits you best</li>
-        <li>Tell us how you want your business to feel</li>
-        <li>Choose a workbook idea and check the market</li>
-        <li>Build, edit and download your workbook</li>
-      </ol>
-      <p class="note-box">Your answers stay in this browser. They're sent to the AI only to create your suggestions and aren't saved by this tool. Nothing is invented about you: every suggestion points back to your own words.</p>
-      ${needCode ? `<div class="field" style="margin-top:18px"><label for="accessCode">Access code</label><input class="input" id="accessCode" autocomplete="off" placeholder="Enter the code from your purchase email"></div>` : ''}
-      ${errorBox()}
-      <div class="actions">
-        <button type="button" class="btn primary" data-act="start">${started ? 'Continue' : 'Start'}</button>
-        ${started ? '<span class="spacer"></span><button type="button" class="btn quiet" data-act="reset">Start over</button>' : ''}
-      </div>
-    </section>`;
-  },
-
-  discover() {
-    if (state.qIndex >= QUESTIONS.length) {
-      return `<section class="card">
-        <p class="eyebrow-step">Discover</p>
-        <h2>Nice work. Here's what you shared.</h2>
-        <p class="lead">Read it over and add anything that comes to mind. More real examples lead to better suggestions.</p>
-        <div class="answers-review">${QUESTIONS.map((q, n) => `<button type="button" data-q="${n}"><b>${esc(q.text)}</b>${esc(state.answers[q.id]?.answer || '')}${state.answers[q.id]?.followUpAnswer ? ` ${esc(state.answers[q.id].followUpAnswer)}` : ''}</button>`).join('')}</div>
-        <div class="actions"><button type="button" class="btn primary" data-go="strengths" ${allAnswered() ? '' : 'disabled'}>Find my strengths</button></div>
-      </section>`;
-    }
-    const q = QUESTIONS[state.qIndex];
-    const a = state.answers[q.id] || {};
-    return `<section class="card">
-      <p class="q-count">Question ${state.qIndex + 1} of ${QUESTIONS.length}</p>
-      <p class="q-text" id="qText">${esc(q.text)}</p>
-      <p class="q-hint">${esc(q.hint)}</p>
-      <details class="example"><summary>See an example answer</summary><p>${esc(q.example)}</p></details>
-      <textarea class="input" data-bind="answers.${q.id}.answer" aria-labelledby="qText" placeholder="Write it the way you'd tell a friend.">${esc(a.answer || '')}</textarea>
-      ${a.ack ? `<p class="ack">${esc(a.ack)}</p>` : ''}
-      ${a.followUpQuestion ? `<div class="followup">
-        <p class="q-text" id="fqText">${esc(a.followUpQuestion)}</p>
-        <textarea class="input" data-bind="answers.${q.id}.followUpAnswer" aria-labelledby="fqText" placeholder="Optional, but it helps.">${esc(a.followUpAnswer || '')}</textarea>
-      </div>` : ''}
-      ${busyBox()}${errorBox()}
-      <div class="actions">
-        ${state.qIndex > 0 ? '<button type="button" class="btn quiet" data-act="prevQ">Back</button>' : ''}
-        <span class="spacer"></span>
-        <button type="button" class="btn primary" data-act="nextQ" ${ui.busy ? 'disabled' : ''}>${a.followUpQuestion ? 'Continue' : 'Next'}</button>
-      </div>
-    </section>`;
-  },
-
-  strengths() {
-    const KIND = { demonstrated: 'Shown in what you\'ve done', interest: 'Something you enjoy', mixed: 'Done it and enjoy it' };
-    const rejectedNames = new Set(state.rejected.map((r) => r.name));
-    const cards = state.strengthList.map((s, n) => {
-      const rej = rejectedNames.has(s.name);
-      const sel = state.pick === n;
-      const r = state.rejected.find((x) => x.name === s.name);
-      return `<article class="choice ${sel ? 'selected' : ''} ${rej ? 'rejected' : ''}">
-        <h3>${esc(s.name)}</h3>
-        <div class="badges"><span class="badge">${KIND[s.kind]}</span>${s.enjoyment === 'high' ? '<span class="badge gold">You seem to enjoy this</span>' : ''}</div>
-        <p style="margin:0">${esc(s.summary)}</p>
-        <ul class="quotes" aria-label="In your words">${s.evidence.map((e) => `<li>"${esc(e.quote)}"</li>`).join('')}</ul>
-        <dl class="kv"><dt>Could help</dt><dd>${esc(s.who_it_could_help)}</dd></dl>
-        ${rej ? `<div class="field" style="margin:12px 0 0"><label for="rr${n}">Why isn't this you? <span class="sub">(optional, helps the next suggestions)</span></label>
-            <input class="input" id="rr${n}" data-reject-reason="${esc(s.name)}" value="${esc(r?.reason || '')}"></div>
-            <div class="actions"><button type="button" class="btn small quiet" data-unreject="${esc(s.name)}">Undo</button></div>`
-          : sel ? `<div class="field" style="margin:14px 0 0"><label for="corr">Want to put it in your own words? <span class="sub">(optional)</span></label>
-            <textarea class="input" id="corr" data-bind="correction" style="min-height:80px" placeholder="For example: It's less about cooking and more about planning on a budget.">${esc(state.correction)}</textarea></div>
-            <div class="actions"><button type="button" class="btn primary" data-act="confirmStrength">Use this strength</button><button type="button" class="btn quiet small" data-pick="">Choose a different one</button></div>`
-          : `<div class="actions"><button type="button" class="btn small primary" data-pick="${n}">This is me</button><button type="button" class="btn small" data-reject="${esc(s.name)}">Not me</button></div>`}
-      </article>`;
-    }).join('');
-    return `<section class="card">
-      <p class="eyebrow-step">Your strength</p>
-      <h2>Here's what stands out in your answers</h2>
-      <p class="lead">Each suggestion comes with your own words as evidence. Choose the one that fits best, put it in your own words, or turn down any that aren't you.</p>
-      ${state.strength ? `<p class="note-box">Current choice: <b>${esc(state.strength.name)}</b>. Choosing another will reset your product ideas.</p>` : ''}
-      ${busyBox()}${errorBox()}
-      ${state.thinNote ? `<div class="note-box">${esc(state.thinNote)} <button type="button" class="btn small" data-go="discover" style="margin-left:6px">Add to my answers</button></div>` : ''}
-      <div class="choices">${cards}</div>
-      ${!ui.busy && state.strengthList.length === 0 && !ui.error && used('strengths') > 0 ? '<p class="note-box">No strong matches yet. Adding a specific example or two to your answers usually helps.</p>' : ''}
-      <div class="actions">
-        <button type="button" class="btn" data-act="differentStrengths" ${ui.busy || left('strengths') === 0 ? 'disabled' : ''}>Suggest different strengths</button>${leftNote('strengths')}
-        <span class="spacer"></span>
-        ${state.strength ? '<button type="button" class="btn primary" data-go="preferences">Next</button>' : ''}
-      </div>
-    </section>`;
-  },
-
-  preferences() {
-    const L = state.lifestyle;
-    const chips = (list, field, cls = '', single = false) => `<div class="chips" role="group">${list.map((x) => {
-      const on = single ? L[field] === x : L[field].includes(x);
-      return `<button type="button" class="chip ${cls}" aria-pressed="${on}" data-chip="${field}" data-single="${single}" data-v="${esc(x)}">${esc(x)}</button>`;
-    }).join('')}</div>`;
-    return `<section class="card">
-      <p class="eyebrow-step">Preferences</p>
-      <h2>How do you want your business to feel?</h2>
-      <p class="lead">A product only helps if you enjoy running it. Your ideas will steer around anything you want to avoid.</p>
-      <fieldset class="group"><legend>Work you enjoy</legend>${chips(ENJOY, 'enjoy')}</fieldset>
-      <fieldset class="group"><legend>Things you'd rather avoid</legend>${chips(AVOID, 'avoid', 'avoid')}</fieldset>
-      <fieldset class="group"><legend>Time you can give it each week</legend>${chips(HOURS, 'hours', '', true)}</fieldset>
-      <fieldset class="group"><legend>How involved do you want to be?</legend>${chips(INVOLVEMENT, 'involvement', '', true)}</fieldset>
-      <div class="field"><label for="ln">Anything else? <span class="sub">(optional)</span></label><input class="input" id="ln" data-bind="lifestyle.notes" value="${esc(L.notes)}" placeholder="For example: I work full time and want weekends free."></div>
-      <div class="actions"><button type="button" class="btn quiet" data-go="strengths">Back</button><span class="spacer"></span><button type="button" class="btn primary" data-go="ideas">See product ideas</button></div>
-    </section>`;
-  },
-
-  ideas() {
-    const sel = state.idea;
-    const cards = state.ideas.map((i, n) => `<article class="choice ${sel && sel.sourceIndex === n ? 'selected' : ''}">
-      <h3>${esc(i.title)}</h3>
-      <div class="badges"><span class="badge">Workbook</span></div>
-      <dl class="kv">
-        <dt>For</dt><dd>${esc(i.audience)}</dd>
-        <dt>Their problem</dt><dd>${esc(i.problem)}</dd>
-        <dt>Their result</dt><dd>${esc(i.transformation)}</dd>
-        <dt>Why it fits you</dt><dd>${esc(i.why_useful)}</dd>
-        <dt>Your preferences</dt><dd>${esc(i.lifestyle_fit)}</dd>
-      </dl>
-      ${i.what_to_validate.length ? `<div class="note-box"><b>Still to check:</b><ul style="margin:4px 0 0;padding-left:18px">${i.what_to_validate.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
-      <div class="actions"><button type="button" class="btn small ${sel && sel.sourceIndex === n ? 'primary' : ''}" data-idea="${n}">${sel && sel.sourceIndex === n ? 'Chosen' : 'Build this one'}</button></div>
-    </article>`).join('');
-    const edit = sel ? `<div class="card" style="margin-top:18px">
-      <h3>Make it yours</h3>
-      <p class="small" style="margin:0 0 14px">Adjust the wording before we build. Your workbook will follow this.</p>
-      <div class="field"><label for="it">Working title</label><input class="input" id="it" data-bind="idea.title" value="${esc(sel.title)}"></div>
-      <div class="field"><label for="ia">Who it's for</label><input class="input" id="ia" data-bind="idea.audience" value="${esc(sel.audience)}"></div>
-      <div class="field"><label for="ip">Their problem</label><input class="input" id="ip" data-bind="idea.problem" value="${esc(sel.problem)}"></div>
-      <div class="field"><label for="ir">The result they get</label><input class="input" id="ir" data-bind="idea.transformation" value="${esc(sel.transformation)}"></div>
-      <div class="actions"><span class="spacer"></span><button type="button" class="btn primary" data-go="validate">Continue to market check</button></div>
-    </div>` : '';
-    return `<section class="card">
-      <p class="eyebrow-step">Product ideas</p>
-      <h2>Workbook ideas built on ${esc(state.strength?.name || 'your strength')}</h2>
-      <p class="lead">This first version builds workbooks: guided exercises your buyer completes on their own, so there's little to manage once it's done. Pick the idea you'd most like to make.</p>
-      ${busyBox()}${errorBox()}
-      <div class="choices">${cards}</div>
-      <div class="actions"><button type="button" class="btn" data-act="moreIdeas" ${ui.busy || left('ideas') === 0 ? 'disabled' : ''}>Show different ideas</button>${leftNote('ideas')}</div>
-    </section>${edit}`;
-  },
-
-  validate() {
-    const v = state.validation;
-    const lvl = evidenceLevel(v);
-    const idx = EVIDENCE_LEVELS.findIndex((l) => l.key === lvl.key);
-    const price = suggestPrice(v.comparables);
-    const q = encodeURIComponent(`${state.strength?.name || ''} workbook`.trim());
-    const qp = encodeURIComponent(state.idea?.problem?.replace(/["“”]/g, '') || state.strength?.name || '');
-    const link = (href, label) => `<a href="${href}" target="_blank" rel="noopener">${label}</a>`;
-    return `<section class="card">
-      <p class="eyebrow-step">Market check</p>
-      <h2>Do people want this?</h2>
-      <p class="lead">Spend 15 minutes looking around. You don't need to finish this before building: many people build a first version to test. Just don't call it a proven seller until you have real evidence.</p>
-      <div class="evidence" aria-live="polite">
-        <div class="meter" aria-hidden="true">${EVIDENCE_LEVELS.slice(1).map((_, n) => `<i class="${n < idx ? 'on' : ''}"></i>`).join('')}</div>
-        <div><b id="evLabel">${esc(lvl.label)}</b><span class="small" id="evDetail">${esc(lvl.detail)}</span></div>
-      </div>
-
-      <div class="task">
-        <h3>1. Find similar products</h3>
-        <p class="small" style="margin:0">Search for workbooks, planners or guides on this topic and note their prices.</p>
-        <div class="where">${link(`https://www.etsy.com/search?q=${q}`, 'Etsy')}${link(`https://gumroad.com/discover?query=${q}`, 'Gumroad')}${link(`https://www.amazon.com/s?k=${q}`, 'Amazon')}${link(`https://www.google.com/search?q=${q}`, 'Google')}</div>
-        ${v.comparables.map((c, n) => `<div class="row3">
-          <div class="field"><label for="cn${n}">Product ${n + 1}</label><input class="input" id="cn${n}" data-bind="validation.comparables.${n}.name" data-live="evidence" value="${esc(c.name || '')}" placeholder="Name"></div>
-          <div class="field"><label for="cp${n}">Price</label><input class="input" id="cp${n}" inputmode="decimal" data-bind="validation.comparables.${n}.price" data-live="evidence" value="${esc(c.price || '')}" placeholder="$"></div>
-          <div class="field"><label for="cl${n}">Link <span class="sub">(optional)</span></label><input class="input" id="cl${n}" data-bind="validation.comparables.${n}.link" value="${esc(c.link || '')}" placeholder="https://"></div>
-        </div>`).join('')}
-      </div>
-
-      <div class="task">
-        <h3>2. Note questions people ask</h3>
-        <p class="small" style="margin:0">Real questions show what your buyers struggle with, and make great workbook content.</p>
-        <div class="where">${link(`https://www.reddit.com/search/?q=${qp}`, 'Reddit')}${link(`https://www.quora.com/search?q=${qp}`, 'Quora')}${link(`https://www.youtube.com/results?search_query=${qp}`, 'YouTube comments')}${link(`https://www.google.com/search?q=${qp}`, 'Google "People also ask"')}</div>
-        ${v.questions.map((x, n) => `<div class="field"><label for="vq${n}" class="sr">Question ${n + 1}</label><input class="input" id="vq${n}" data-bind="validation.questions.${n}" data-live="evidence" value="${esc(x)}" placeholder="Question ${n + 1}"></div>`).join('')}
-      </div>
-
-      <div class="task">
-        <h3>3. Count real interest</h3>
-        <p class="small" style="margin:0 0 12px">Only count real people, not guesses.</p>
-        <div class="row2">
-          <div class="field"><label for="s1">People who asked you for help with this</label><input class="input" id="s1" inputmode="numeric" data-bind="validation.signals.askedForHelp" data-live="evidence" value="${esc(v.signals.askedForHelp)}"></div>
-          <div class="field"><label for="s2">People on a waitlist or interest list</label><input class="input" id="s2" inputmode="numeric" data-bind="validation.signals.waitlist" data-live="evidence" value="${esc(v.signals.waitlist)}"></div>
-          <div class="field"><label for="s3">Pre-orders</label><input class="input" id="s3" inputmode="numeric" data-bind="validation.signals.presales" data-live="evidence" value="${esc(v.signals.presales)}"></div>
-          <div class="field"><label for="s4">People who've paid you for this help</label><input class="input" id="s4" inputmode="numeric" data-bind="validation.signals.paidClients" data-live="evidence" value="${esc(v.signals.paidClients)}"></div>
-        </div>
-      </div>
-
-      <div class="price-box" aria-live="polite"><span class="small">Suggested starting price to test</span><b id="pxVal">${money(price.price)}</b><span class="small" id="pxNote">${esc(price.note)}</span></div>
-      <div class="actions"><button type="button" class="btn quiet" data-go="ideas">Back</button><span class="spacer"></span><button type="button" class="btn primary" data-go="build">Build my workbook</button></div>
-    </section>`;
-  },
-
-  build() {
-    const o = state.outline;
-    if (!o) {
-      return `<section class="card"><p class="eyebrow-step">Build</p><h2>Planning your workbook</h2>${busyBox()}${errorBox()}
-        ${!ui.busy ? `<div class="actions"><button type="button" class="btn primary" data-act="outline" ${left('outline') === 0 ? 'disabled' : ''}>Create my outline</button></div>` : ''}</section>`;
-    }
-    const anyWritten = o.sections.some((s) => state.sections[s.id]?.blocks?.length);
-    const KIND = { intro: 'Introduction', exercise: 'Exercise', outcome: 'Wrap-up' };
-    return `<section class="card">
-      <p class="eyebrow-step">Build</p>
-      <h2 contenteditable="true" data-edit="outline.title" spellcheck="true">${esc(o.title)}</h2>
-      <p class="lead" contenteditable="true" data-edit="outline.subtitle">${esc(o.subtitle)}</p>
-      <h3>Outline</h3>
-      <p class="small" style="margin:0 0 10px">Rename any section before writing. You can edit every word afterward, too.</p>
-      <ol class="outline-list">${o.sections.map((s, n) => `<li><span class="num">${n + 1}</span><div>
-        <span class="kind">${KIND[s.kind]}</span>
-        <input aria-label="Section ${n + 1} title" data-bind="outline.sections.${n}.title" value="${esc(s.title)}">
-        <small>${esc(s.purpose)}</small></div></li>`).join('')}</ol>
-      ${busyBox()}${errorBox()}
-      <div class="actions">
-        ${!sectionsDone() ? `<button type="button" class="btn primary" data-act="writeAll" ${ui.writing.size ? 'disabled' : ''}>${anyWritten ? 'Write the remaining sections' : 'Write my workbook'}</button>` : ''}
-        <button type="button" class="btn quiet small" data-act="newOutline" ${left('outline') === 0 || ui.writing.size ? 'disabled' : ''}>New outline</button>${leftNote('outline')}
-      </div>
-    </section>
-    <div class="doc">${o.sections.map((s) => sectionCard(s)).join('')}</div>
-    ${sectionsDone() ? `<div class="actions"><span class="spacer"></span><button type="button" class="btn primary" data-go="review">Review and export</button></div>` : ''}`;
-  },
-
-  review() {
-    const s = state.summary;
-    const price = currentPrice();
-    const lvl = evidenceLevel(state.validation);
-    const risky = s ? riskyPhrases(`${s.product_title} ${s.short_description} ${s.sales_description}`) : [];
-    return `<section class="card">
-      <p class="eyebrow-step">Review & export</p>
-      <h2>Your product is ready to test</h2>
-      <p class="lead">Polish the details, then download your workbook and your product summary.</p>
-      ${busyBox()}${errorBox()}
-      ${s ? `<div class="review-grid">
-        <div class="field"><label for="pt">Product title</label><input class="input" id="pt" data-bind="summary.product_title" data-live="risky" value="${esc(s.product_title)}"></div>
-        <div class="field"><label for="sd">Short description</label><textarea class="input" id="sd" style="min-height:70px" data-bind="summary.short_description" data-live="risky">${esc(s.short_description)}</textarea></div>
-        <div class="field"><label for="sl">Sales description</label><textarea class="input" id="sl" style="min-height:180px" data-bind="summary.sales_description" data-live="risky">${esc(s.sales_description)}</textarea>
-          <div id="riskyWarn">${riskyWarn(risky)}</div></div>
-        <div class="row2">
-          <div class="field"><label for="wf">Who it's for <span class="sub">(one per line)</span></label><textarea class="input" id="wf" data-lines="summary.who_its_for">${esc(s.who_its_for.join('\n'))}</textarea></div>
-          <div class="field"><label for="wg">What they get <span class="sub">(one per line)</span></label><textarea class="input" id="wg" data-lines="summary.what_they_get">${esc(s.what_they_get.join('\n'))}</textarea></div>
-        </div>
-        <div class="row2">
-          <div class="field"><label for="pr">Starting price to test</label><input class="input" id="pr" inputmode="decimal" data-bind="priceOverride" placeholder="${price.suggested}" value="${esc(state.priceOverride)}">
-            <small class="small">${esc(price.note)}</small></div>
-          <div class="field"><span class="lbl-block">Market evidence so far</span><p style="margin:0"><b>${esc(lvl.label)}</b></p><small class="small">${esc(lvl.detail)}</small></div>
-        </div>
-        <div class="field"><label for="lc">Launch-readiness checklist <span class="sub">(one per line)</span></label><textarea class="input" id="lc" style="min-height:160px" data-lines="summary.launch_checklist">${esc(s.launch_checklist.join('\n'))}</textarea></div>
-        <div class="field"><label for="au">Your name for the cover <span class="sub">(optional)</span></label><input class="input" id="au" data-bind="author" value="${esc(state.author)}" placeholder="e.g. Jordan Lee"></div>
-      </div>
-      <h3 style="margin-top:10px">Download</h3>
-      <div class="downloads">
-        <div class="download"><h3>Your workbook</h3><p>Editable Word file. Opens in Word, Google Docs, Pages and Canva.</p><button type="button" class="btn primary small" data-export="workbook">Download workbook (.docx)</button></div>
-        <div class="download"><h3>Print or PDF</h3><p>Printable layout with writing space. Choose "Save as PDF" to sell a PDF.</p><button type="button" class="btn small" data-act="print">Print or save as PDF</button></div>
-        <div class="download"><h3>Product summary</h3><p>Your strength, customer, description, price and launch checklist.</p><button type="button" class="btn small" data-export="summary">Download summary (.docx)</button></div>
-      </div>
-      <div class="actions"><button type="button" class="btn quiet small" data-act="redoSummary" ${left('summary') === 0 ? 'disabled' : ''}>Rewrite the description and checklist</button>${leftNote('summary')}</div>` : ''}
-    </section>`;
-  },
+const S = {
+  token: '', buyer: null, answers: {}, map: null, progress: { index: 0, phase: 'intro', goal: 100 },
+  sharedAt: null, updatedAt: null, tailored: {}, ack: {}, fuOpen: {}, thinking: false,
+  returnToReview: false, missingInfo: '', showDelete: false, note: '', confirmFresh: false,
 };
 
-function riskyWarn(list) {
-  return list.length ? `<p class="warn">Heads up: avoid ${list.join(', ')}. Income claims can break FTC rules and ad-platform policies. Describe what's inside and who it helps instead.</p>` : '';
-}
+/* ---------- Storage helpers (all wrapped: storage can be blocked) ---------- */
+const ls = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
+  del(k) { try { localStorage.removeItem(k); } catch { /* ignore */ } },
+};
+const backupKey = () => `afm-backup:${S.token.slice(0, 36)}`;
+function backup() { ls.set(backupKey(), JSON.stringify({ answers: S.answers, map: S.map, progress: S.progress, at: new Date().toISOString() })); }
 
-function currentPrice() {
-  const s = suggestPrice(state.validation.comparables);
-  const o = Number(String(state.priceOverride).replace(/[$,\s]/g, ''));
-  return { suggested: s.price, price: Number.isFinite(o) && o > 0 ? o : s.price, note: s.note };
+/* ---------- API ---------- */
+async function api(path, { method = 'GET', body } = {}) {
+  let res;
+  try {
+    res = await fetch(path, { method, headers: { 'content-type': 'application/json', ...(S.token ? { 'x-map-token': S.token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  } catch {
+    const e = new Error('You seem to be offline. Your work is kept in this browser and will save when you are back online.'); e.status = 0; e.retryable = true; throw e;
+  }
+  let data = {};
+  try { data = await res.json(); } catch { /* not JSON */ }
+  if (!res.ok || data.ok === false) {
+    const e = new Error(data.error || 'Something went wrong. Try again.');
+    Object.assign(e, { status: res.status, detail: data.detail, retryable: data.retryable });
+    throw e;
+  }
+  return data;
 }
+const errText = (e) => `${esc(e.message)}${DEBUG && e.detail ? `<br><small>${esc(e.detail)}</small>` : ''}`;
 
-function blocksToText(blocks = []) {
-  return blocks.map((b) => [b.text, ...b.items.map((i) => `- ${i}`)].filter(Boolean).join('\n')).join('\n\n');
+/* ---------- Saving ---------- */
+let saveTimer; let queued = {}; let saving = false;
+function setSaved(text) {
+  for (const el of document.querySelectorAll('#saved, #savedPill')) el.textContent = text;
 }
-
-function blockHtml(b, sid, n, editable = true) {
-  const ce = (path) => (editable ? `contenteditable="true" data-edit="sections.${sid}.blocks.${n}.${path}"` : '');
-  const items = (tag, cls = '') => `${b.text ? `<p class="lead-in" ${ce('text')}>${esc(b.text)}</p>` : ''}<${tag} class="${cls}">${b.items.map((it, k) => `<li ${ce(`items.${k}`)}>${esc(it)}</li>`).join('')}</${tag}>`;
-  switch (b.type) {
-    case 'heading': return `<h4 ${ce('text')}>${esc(b.text)}</h4>`;
-    case 'bullets': return items('ul');
-    case 'steps': return items('ol');
-    case 'checklist': return items('ul', 'check');
-    case 'question': return `<div class="qblock"><p ${ce('text')}>${esc(b.text)}</p><div class="lines"></div></div>`;
-    case 'tip': return `<div class="tip"><b>Tip:</b> <span ${ce('text')}>${esc(b.text)}</span></div>`;
-    default: return `<p ${ce('text')}>${esc(b.text)}</p>`;
+function queueSave(patch, { now = false } = {}) {
+  Object.assign(queued, patch);
+  backup();
+  setSaved('Saving…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flush, now ? 0 : 800);
+}
+async function flush() {
+  if (saving) { saveTimer = setTimeout(flush, 400); return; }
+  const body = queued; queued = {};
+  if (!Object.keys(body).length) return;
+  saving = true;
+  try {
+    const r = await api('/api/me', { method: 'PUT', body });
+    S.updatedAt = r.savedAt;
+    setSaved('Saved');
+  } catch (e) {
+    queued = { ...body, ...queued };
+    if (e.status === 401) { setSaved('Not saved: link no longer valid'); return; }
+    setSaved('Not saved yet. Retrying…');
+    saveTimer = setTimeout(flush, 5000);
+  } finally {
+    saving = false;
   }
 }
+window.addEventListener('beforeunload', (e) => { if (Object.keys(queued).length) { e.preventDefault(); e.returnValue = ''; } });
 
-function sectionCard(s) {
-  const content = state.sections[s.id];
-  const writing = ui.writing.has(s.id);
-  const body = content?.blocks?.length && !writing
-    ? `<div class="sec-body">${content.blocks.map((b, n) => blockHtml(b, s.id, n)).join('')}</div>
-       <div class="sec-foot">
-         <input class="input" id="ins-${s.id}" placeholder="What should change? e.g. shorter, add an example" aria-label="Rewrite instructions for ${esc(s.title)}">
-         <button type="button" class="btn small" data-rewrite="${s.id}" ${left('regenerations') === 0 || ui.writing.size ? 'disabled' : ''}>Rewrite</button>
-         ${state.previous[s.id] ? `<button type="button" class="btn small quiet" data-undo="${s.id}">Undo rewrite</button>` : ''}
-         ${leftNote('regenerations')}
-       </div>`
-    : `<div class="sec-pending">${writing ? '<span class="spin" aria-hidden="true"></span>Writing this section…' : 'Not written yet.'}</div>`;
-  return `<article class="sec" id="sec-${s.id}"><div class="sec-top"><h3>${esc(s.title)}</h3></div>${body}</article>`;
+/* ---------- Shared pieces ---------- */
+const topbar = () => `<div class="topbar"><div class="wrap">
+  <div class="brand"><img src="assets/pig-monogram-gold.png" alt=""><span><b>Authority Funnel Map</b> by ${esc(CONFIG.brand)}</span></div>
+  ${S.token ? '<span class="saved-pill" id="savedPill" role="status">Saved</span>' : ''}
+</div></div>`;
+
+const resendForm = (title = 'Already bought? Get your link again') => `
+  <div class="card" style="margin-top:18px">
+    <h2>${title}</h2>
+    <p>Enter the email you used to buy and we will send your personal link again.</p>
+    <form class="inline-form" data-ui-form="resend">
+      <label class="sr" for="resendEmail">Email</label>
+      <input id="resendEmail" type="email" autocomplete="email" placeholder="you@yourbusiness.com" required>
+      <button class="btn solid" type="submit">Email me my link</button>
+    </form>
+    <div id="resendMsg"></div>
+  </div>`;
+
+/* ---------- Screens ---------- */
+function renderWelcome(errorMsg = '') {
+  unmountMap();
+  app.innerHTML = `${topbar()}
+  <section class="hero"><div class="wrap">
+    <div class="eyebrow">Authority Funnel Map</div>
+    <h1>Find the digital products already <span>hiding inside your business</span>.</h1>
+    <p class="sub">Turn the processes, explanations and resources you already use with clients into a clear map of digital products, so you can serve people earlier, prepare them for your larger offers and spend less time repeating the same work.</p>
+  </div></section>
+  <div class="screen wide">
+    ${errorMsg ? `<div class="msg err">${errorMsg}</div>` : ''}
+    <div class="steps-row">
+      <div class="step-card"><div class="n">1</div><h3>Answer focused questions</h3><p>About the business you already run: your signature offer, how you work with customers and what you have already made.</p></div>
+      <div class="step-card"><div class="n">2</div><h3>Get your Authority Funnel Map</h3><p>One to five digital products in a funnel that leads buyers toward your signature offer, built from what you already have.</p></div>
+      <div class="step-card"><div class="n">3</div><h3>Edit, price and test</h3><p>Adjust anything, choose prices from realistic ranges, and run one simple test before you build.</p></div>
+    </div>
+    <div class="cta-row"><button class="btn big" type="button" data-ui="example">See an example map</button></div>
+    ${resendForm()}
+  </div>`;
 }
 
-function renderPrint() {
-  const o = state.outline;
-  if (!o) { $('printDoc').innerHTML = ''; return; }
-  $('printDoc').innerHTML = `<div class="cover"><h1>${esc(state.summary?.product_title || o.title)}</h1><p>${esc(o.subtitle)}</p>${state.author ? `<p style="margin-top:24pt">By ${esc(state.author)}</p>` : ''}</div>
-    ${o.sections.map((s) => `<section><h2>${esc(s.title)}</h2>${(state.sections[s.id]?.blocks || []).map((b, n) => blockHtml(b, s.id, n, false)).join('')}</section>`).join('')}`;
+function renderIntro() {
+  unmountMap();
+  const name = S.buyer?.firstName ? `, ${esc(S.buyer.firstName)}` : '';
+  app.innerHTML = `${topbar()}
+  <div class="screen">
+    <div class="card">
+      <h2>Welcome${name}. Let’s find the products already in your business.</h2>
+      <p>You will answer ${QUESTIONS.length} short questions in five stages. Most people finish in 15 to 25 minutes. Your answers save as you go, so you can stop and come back from any device using the link in your email.</p>
+      <p>At the end you get your <b>Authority Funnel Map</b>: up to five digital products, each solving one specific problem and moving buyers one step closer to your signature offer. You can edit everything.</p>
+      <ul class="small-print" style="padding-left:18px;margin:12px 0 0">
+        <li>This works best for an established business with paying customers.</li>
+        <li>The AI suggests ideas from your answers and marks what is still an assumption. It never promises sales or income.</li>
+        <li>Your answers are private, kept for ${CONFIG.retentionMonths} months after your last visit, and you can delete them at any time.</li>
+      </ul>
+      <div class="cta-row"><button class="btn solid big" type="button" data-ui="start">Start with stage 1</button></div>
+    </div>
+  </div>`;
 }
 
-function renderMeter() {
-  const m = $('meter');
-  if (!DEBUG) { m.hidden = true; return; }
-  m.hidden = false;
-  const u = state.usage;
-  const rows = Object.entries(LIMITS).filter(([k]) => !k.endsWith('Chars')).map(([k, v]) => `<tr><td>${k}</td><td>${used(k)} / ${v}</td></tr>`).join('');
-  m.innerHTML = `<b>AI cost meter${u.estimated ? ' (estimated, test mode)' : ''}</b><br>
-    Total: $${u.cost.toFixed(4)} | tokens in ${u.tokensIn.toLocaleString()} | out ${u.tokensOut.toLocaleString()} | calls ${(u.log || []).length}
-    <table>${rows}</table>`;
+function progressBar(q) {
+  const cur = STAGES.findIndex((s) => s.id === q.stage);
+  const n = QUESTIONS.indexOf(q) + 1;
+  return `<div class="progress" aria-label="Progress">
+    <div class="stage-dots">${STAGES.map((s, i) => `<div class="stage-dot ${i < cur ? 'done' : i === cur ? 'now' : ''}"><i></i><span>${s.n}. ${esc(s.label)}</span></div>`).join('')}</div>
+    <div class="qcount"><span>Stage ${STAGES[cur].n} of 5: ${esc(STAGES[cur].label)}</span><span>Question ${n} of ${QUESTIONS.length}</span></div>
+  </div>`;
+}
+
+function renderInterview({ focus = 'answer' } = {}) {
+  unmountMap();
+  const i = Math.min(S.progress.index, QUESTIONS.length - 1);
+  const q = QUESTIONS[i];
+  const a = S.answers[q.id] || {};
+  const stage = STAGES.find((s) => s.id === q.stage);
+  const firstOfStage = QUESTIONS.findIndex((x) => x.stage === q.stage) === i;
+  const tailored = (S.tailored[q.id] || []).filter(Boolean);
+  const examples = tailored.length ? tailored : q.examples;
+  const fu = S.fuOpen[q.id] && a.followUpQuestion;
+  app.innerHTML = `${topbar()}
+  <div class="screen">
+    ${progressBar(q)}
+    <section class="card qcard" aria-labelledby="qh">
+      ${S.ack[q.id] && !S.returnToReview ? `<div class="ack">${esc(S.ack[q.id])}</div>` : ''}
+      ${firstOfStage ? `<div class="stage-intro">${esc(stage.intro)}</div>` : ''}
+      <div class="stage-label">Stage ${stage.n}: ${esc(stage.label)}</div>
+      <h2 id="qh">${esc(q.prompt)}${q.optional ? '<span class="optional-tag">Optional</span>' : ''}</h2>
+      <p class="help">${esc(q.help)}</p>
+      <label class="sr" for="answer">Your answer</label>
+      <textarea id="answer" maxlength="${LIMITS_INTERVIEW.answer}" data-ui-input="answer" placeholder="Type your answer here">${esc(a.answer || '')}</textarea>
+      <div class="count"><span id="ansCount">${(a.answer || '').length}</span> / ${LIMITS_INTERVIEW.answer}</div>
+      <details class="examples" ${(a.answer || '').trim() ? '' : 'open'}>
+        <summary>Examples${tailored.length ? '<span class="tailored">For a business like yours</span>' : ''}</summary>
+        <ul>${examples.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+      </details>
+      ${fu ? `<div class="followup" aria-labelledby="fuh">
+        <div class="fu-label">One more detail</div>
+        <h3 id="fuh">${esc(a.followUpQuestion)}</h3>
+        <label class="sr" for="fu">Your answer to the follow-up</label>
+        <textarea id="fu" maxlength="${LIMITS_INTERVIEW.followUp}" data-ui-input="fu" placeholder="A sentence or two is enough">${esc(a.followUpAnswer || '')}</textarea>
+        ${(a.followUpExamples || []).length ? `<details class="examples"><summary>Examples</summary><ul>${a.followUpExamples.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}
+      </div>` : ''}
+      ${S.note ? `<div class="msg" role="status">${S.note}</div>` : ''}
+      <div class="q-actions">
+        <button class="btn quiet" type="button" data-ui="back" ${i === 0 && !S.returnToReview ? 'disabled' : ''}>${S.returnToReview ? 'Back to review' : 'Back'}</button>
+        <div class="right">
+          ${S.thinking ? '<span class="thinking">Reading your answer…</span>' : ''}
+          ${fu ? '<button class="btn quiet" type="button" data-ui="skipfu">Skip this detail</button>' : `<button class="btn quiet" type="button" data-ui="skip">Skip</button>`}
+          <button class="btn solid" type="button" data-ui="next" ${S.thinking ? 'disabled' : ''}>${S.returnToReview && !fu ? 'Save and return' : i === QUESTIONS.length - 1 && !fu ? 'Review my answers' : 'Continue'}</button>
+        </div>
+      </div>
+    </section>
+    <p class="small-print">Saved automatically. You can leave and come back with the link in your email.</p>
+  </div>`;
+  const el = $(focus === 'fu' ? '#fu' : '#answer');
+  if (el && !S.thinking) { el.focus(); el.setSelectionRange?.(el.value.length, el.value.length); }
+}
+
+function renderReview(message = '') {
+  unmountMap();
+  const ready = readyToMap(S.answers);
+  const missing = ESSENTIAL.filter((id) => !(S.answers[id]?.answer || '').trim()).map((id) => QUESTIONS.find((q) => q.id === id));
+  app.innerHTML = `${topbar()}
+  <div class="screen">
+    <div class="card">
+      <h2>Review your answers</h2>
+      <p>Change anything before you create your map. Better detail gives better product ideas.</p>
+      ${STAGES.map((s) => `<div class="review-stage"><h3>Stage ${s.n}: ${esc(s.label)}</h3>
+        ${QUESTIONS.filter((q) => q.stage === s.id).map((q) => {
+          const a = S.answers[q.id] || {};
+          const text = [a.answer, a.followUpAnswer ? `${a.followUpQuestion}\n${a.followUpAnswer}` : ''].filter((x) => (x || '').trim()).join('\n\n');
+          return `<div class="review-item"><div class="rq">${esc(q.prompt)}</div><div class="ra ${text ? '' : 'empty'}">${text ? esc(text) : (q.optional ? 'Skipped (optional)' : 'Not answered yet')}</div>
+            <button class="btn small" type="button" data-ui="edit" data-q="${QUESTIONS.indexOf(q)}">${text ? 'Edit' : 'Answer'}</button></div>`;
+        }).join('')}</div>`).join('')}
+      <div class="goal-pick">
+        <h3 style="font-size:0.95rem;color:var(--teal-deep)">Your goal per sale</h3>
+        <p>Roughly what you would like each buyer to spend on average across your funnel. You can change it later.</p>
+        <div class="goal" role="radiogroup" aria-label="Goal per sale">${AOV_GOALS.map((g) => `<button type="button" role="radio" aria-checked="${g === S.progress.goal}" class="goal-chip ${g === S.progress.goal ? 'on' : ''}" data-ui="goal" data-value="${g}">$${g}</button>`).join('')}</div>
+      </div>
+      ${message ? `<div class="msg err" role="alert">${message}</div>` : ''}
+      ${!ready ? `<div class="msg">To create your map, answer ${missing.length ? missing.map((q) => `"${esc(q.prompt)}"`).join(', ') : 'at least six questions'}${missing.length ? '' : ''}.</div>` : ''}
+      ${S.confirmFresh ? `<div class="msg">Creating a fresh map replaces your current map and any edits you made to it. <div class="cta-row" style="margin-top:8px"><button class="btn solid small" type="button" data-ui="generate-confirm">Replace my map</button><button class="btn small" type="button" data-ui="cancel-fresh">Keep my current map</button></div></div>` : ''}
+      <div class="cta-row">
+        <button class="btn solid big" type="button" data-ui="generate" ${ready ? '' : 'disabled'}>${S.map ? 'Create a fresh map' : 'Create my Authority Funnel Map'}</button>
+        ${S.map ? '<button class="btn big" type="button" data-ui="tomap">Back to my map</button>' : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+const PHASES = ['Reading your answers', 'Finding what you already have', 'Matching problems to products', 'Placing products in your funnel', 'Checking prices against common ranges', 'Marking what is still an assumption', 'Choosing what to test first'];
+let phaseTimer;
+function renderGenerating() {
+  unmountMap();
+  app.innerHTML = `${topbar()}<div class="screen"><div class="card generating" role="status">
+    <div class="ring" aria-hidden="true"></div>
+    <h2>Building your Authority Funnel Map</h2>
+    <p class="phase" id="phase">${PHASES[0]}…</p>
+    <p class="small-print">This usually takes 30 to 90 seconds. Please keep this page open.</p>
+  </div></div>`;
+  let n = 0;
+  clearInterval(phaseTimer);
+  phaseTimer = setInterval(() => { n = Math.min(n + 1, PHASES.length - 1); const el = $('#phase'); if (el) el.textContent = `${PHASES[n]}…`; }, 9000);
+}
+
+function nextStepsHtml() {
+  const card = (cls, title, text, url, label) => `<div class="ns ${cls}"><h3>${title}</h3><p>${text}</p>${url ? `<a class="btn small" href="${esc(url)}" target="_blank" rel="noopener">${label}</a>` : ''}</div>`;
+  return `<section class="panel next-steps" aria-labelledby="ns-h">
+    <div class="eyebrow">Your next step</div>
+    <h2 id="ns-h">Turn this map into a working funnel</h2>
+    <div class="grid3">
+      ${card('primary', 'Have it built for you', `${esc(CONFIG.brand)} can build your funnel pages, workflows and the emails that invite buyers to your signature offer, in HighLevel.`, CONFIG.bookingUrl, 'Book a call')}
+      ${card('', 'Build the products yourself', 'The Low-Ticket Authority Funnel course walks you through creating, structuring and connecting these products.', CONFIG.courseUrl, 'See the course')}
+      ${card('', 'Model your numbers', 'The Authority Funnel Revenue Calculator shows what traffic, take rates and prices could mean for your funnel.', CONFIG.calculatorUrl, 'See the calculator')}
+    </div>
+    ${CONFIG.bookingUrl ? '' : '<p class="note">To book a call, reply to your purchase email.</p>'}
+    ${S.sharedAt ? '' : '<p class="note">Booking a call? Use "Send to Priddy Impact Group" above first, so we can look at your map before we talk.</p>'}
+  </section>`;
+}
+
+function footerHtml() {
+  return `<div class="foot-row">
+    <span>Your map and answers are private to you and kept for ${CONFIG.retentionMonths} months after your last visit.${CONFIG.supportEmail ? ` Questions: <a href="mailto:${esc(CONFIG.supportEmail)}">${esc(CONFIG.supportEmail)}</a>` : ''}</span>
+    <span>Authority Funnel Map v${APP_VERSION} <button type="button" class="linklike" data-app="delete">Delete my data</button></span>
+  </div>
+  ${S.showDelete ? `<div class="danger-zone" role="alert">This permanently deletes your answers and map. Your link will stop working. Type DELETE to confirm:
+    <label class="sr" for="delConfirm">Type DELETE</label><input id="delConfirm" autocomplete="off">
+    <button type="button" class="btn small danger" data-app="delete-confirm">Delete everything</button>
+    <button type="button" class="btn small" data-app="delete-cancel">Cancel</button></div>` : ''}`;
+}
+
+function renderMapScreen() {
+  const tools = `<div class="app-tools">
+    <button type="button" class="btn small" data-app="answers">Edit answers</button>
+    <button type="button" class="btn small" data-app="pdf">Download PDF</button>
+    <button type="button" class="btn small" data-app="png">Download image</button>
+    <button type="button" class="btn small ${S.sharedAt ? '' : 'solid'}" data-app="share">${S.sharedAt ? 'Sent to Priddy Impact Group ✓' : 'Send to Priddy Impact Group'}</button>
+  </div>`;
+  const missing = S.missingInfo ? `<div class="missing"><b>To make this map sharper:</b> ${esc(S.missingInfo)} You can add it under Edit answers and create a fresh map.</div>` : '';
+  mountMap(S.map, {
+    root: app,
+    onChange: (m) => { S.map = m; queueSave({ map: m }); },
+    onAction,
+    toolsHtml: tools,
+    ctaHtml: missing + nextStepsHtml(),
+    footerHtml: footerHtml(),
+    savedText: 'Saved',
+  });
+}
+
+function renderShared(map) {
+  mountMap(map, {
+    root: app,
+    readOnly: true,
+    toolsHtml: '<span class="note" style="margin:0">Shared map, read only</span> <button type="button" class="btn small" data-app="pdf">Download PDF</button>',
+    footerHtml: `<div class="foot-row"><span>Authority Funnel Map v${APP_VERSION}</span></div>`,
+    onAction,
+  });
+}
+
+function renderExample() {
+  mountMap(EXAMPLE_MAP, {
+    root: app,
+    readOnly: true,
+    toolsHtml: '<button type="button" class="btn small" data-app="back-welcome">Back</button>',
+    footerHtml: `<div class="foot-row"><span>Example map for a fictional business. Your map is built from your own answers.</span><span>v${APP_VERSION}</span></div>`,
+    onAction,
+  });
+  window.scrollTo({ top: 0 });
+}
+
+function renderGoodbye() {
+  unmountMap();
+  app.innerHTML = `${topbar()}<div class="screen"><div class="card"><h2>Your data has been deleted</h2><p>Your answers and map are gone and your link no longer works. Thank you for using the Authority Funnel Map.</p></div></div>`;
 }
 
 function render() {
-  renderProgress();
-  renderBanner();
-  view.innerHTML = VIEWS[state.step]();
-  renderPrint();
-  renderMeter();
+  if (S.progress.phase === 'map' && S.map) return renderMapScreen();
+  if (S.progress.phase === 'review') return renderReview();
+  if (S.progress.phase === 'interview') return renderInterview();
+  return renderIntro();
+}
+
+/* ---------- Interview logic ---------- */
+function currentQ() { return QUESTIONS[Math.min(S.progress.index, QUESTIONS.length - 1)]; }
+function answerOf(q) { return (S.answers[q.id] ||= { answer: '', followUpQuestion: '', followUpAnswer: '', followUpExamples: [], skipped: false, checked: false }); }
+
+function advance() {
+  S.note = '';
+  if (S.returnToReview) { S.returnToReview = false; S.progress.phase = 'review'; }
+  else if (S.progress.index >= QUESTIONS.length - 1) { S.progress.phase = 'review'; }
+  else { S.progress.index += 1; }
+  queueSave({ answers: S.answers, progress: S.progress });
+  render();
+  window.scrollTo({ top: 0 });
+}
+
+async function onNext() {
+  const q = currentQ();
+  const a = answerOf(q);
+  a.answer = ($('#answer')?.value || '').trim();
+  if ($('#fu')) a.followUpAnswer = $('#fu').value.trim();
+  if (!a.answer) {
+    if (q.optional) { a.skipped = true; return advance(); }
+    S.note = 'Add a short answer, or choose Skip to come back to it later.';
+    return renderInterview();
+  }
+  a.skipped = false;
+  if (S.fuOpen[q.id]) { S.fuOpen[q.id] = false; return advance(); }
+  if (a.checked) return advance();
+
+  S.thinking = true; S.note = '';
+  renderInterview();
+  try {
+    const r = await api('/api/ai', { method: 'POST', body: { step: 'followup', payload: { answers: S.answers, questionId: q.id, goal: S.progress.goal } } });
+    const d = r.data;
+    a.checked = true;
+    const next = QUESTIONS[QUESTIONS.indexOf(q) + 1];
+    if (next) { S.tailored[next.id] = d.next_examples; S.ack[next.id] = d.acknowledgement; }
+    if (d.needs_follow_up && !a.followUpQuestion) {
+      Object.assign(a, { followUpQuestion: d.follow_up_question, followUpExamples: d.follow_up_examples, followUpAnswer: '' });
+      S.fuOpen[q.id] = true;
+      S.thinking = false;
+      queueSave({ answers: S.answers });
+      return renderInterview({ focus: 'fu' });
+    }
+  } catch (e) {
+    if (e.status === 401) { S.thinking = false; return renderWelcome(errText(e)); }
+    // AI help is a bonus: never block the interview on it.
+    a.checked = e.status === 429;
+  }
+  S.thinking = false;
+  advance();
+}
+
+async function generate() {
+  S.confirmFresh = false;
+  await flushNow();
+  renderGenerating();
+  try {
+    const r = await api('/api/ai', { method: 'POST', body: { step: 'map', payload: { answers: S.answers, goal: S.progress.goal } } });
+    S.map = r.data.map;
+    S.missingInfo = r.data.missingInfo || '';
+    S.progress.phase = 'map';
+    clearInterval(phaseTimer);
+    queueSave({ map: S.map, progress: S.progress }, { now: true });
+    renderMapScreen();
+    window.scrollTo({ top: 0 });
+    showToast('Your map is ready. Everything on it can be edited.');
+  } catch (e) {
+    clearInterval(phaseTimer);
+    if (e.status === 401) return renderWelcome(errText(e));
+    S.progress.phase = 'review';
+    renderReview(`${errText(e)} Your answers are saved${e.status === 429 ? '.' : '. You can try again now.'}`);
+  }
+}
+async function flushNow() { clearTimeout(saveTimer); await flush(); }
+
+/* ---------- Map actions ---------- */
+async function onAction(name) {
+  if (name === 'back-welcome') return renderWelcome();
+  if (name === 'answers') { S.progress.phase = 'review'; queueSave({ progress: S.progress }); renderReview(); return window.scrollTo({ top: 0 }); }
+  if (name === 'pdf') return window.print();
+  if (name === 'png') return exportPng();
+  if (name === 'share') {
+    try {
+      if (S.sharedAt) {
+        await api('/api/share', { method: 'DELETE' });
+        S.sharedAt = null;
+        renderMapScreen();
+        return showToast('Sharing stopped. The old view link no longer works.');
+      }
+      await flushNow();
+      await api('/api/share', { method: 'POST', body: {} });
+      S.sharedAt = new Date().toISOString();
+      renderMapScreen();
+      return showToast(`Sent. ${CONFIG.brand} can now see your map.`);
+    } catch (e) { return showToast(e.message); }
+  }
+  if (name === 'delete') { S.showDelete = true; renderMapScreen(); return $('#delConfirm')?.focus(); }
+  if (name === 'delete-cancel') { S.showDelete = false; return renderMapScreen(); }
+  if (name === 'delete-confirm') {
+    if (($('#delConfirm')?.value || '').trim() !== 'DELETE') return showToast('Type DELETE in capitals to confirm.');
+    try {
+      await api('/api/me', { method: 'DELETE', body: { confirm: 'DELETE' } });
+      ls.del(backupKey()); ls.del(TOKEN_KEY);
+      queued = {}; S.token = '';
+      return renderGoodbye();
+    } catch (e) { return showToast(e.message); }
+  }
+  return undefined;
+}
+
+async function exportPng() {
+  showToast('Preparing your image…');
+  const node = app;
+  node.classList.add('exporting');
+  try {
+    const mod = await import('https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/+esm');
+    const skip = (el) => !(el.classList && (el.classList.contains('app-tools') || el.classList.contains('tools') || el.classList.contains('danger-zone')));
+    const url = await mod.toPng(node, { pixelRatio: 2, backgroundColor: '#F6F0E4', filter: skip, cacheBust: true });
+    const a = document.createElement('a');
+    const name = (currentMap()?.business?.name || 'my-business').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'map';
+    a.href = url; a.download = `authority-funnel-map-${name}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    showToast('Image downloaded.');
+  } catch {
+    showToast('The image could not be made in this browser. Use Download PDF instead.');
+  } finally {
+    node.classList.remove('exporting');
+  }
 }
 
 /* ---------- Events ---------- */
-
-view.addEventListener('input', (e) => {
-  const t = e.target;
-  if (t.dataset.bind) {
-    setPath(state, t.dataset.bind, t.value);
-    if (t.dataset.live === 'evidence') liveEvidence();
-    if (t.dataset.live === 'risky') $('riskyWarn').innerHTML = riskyWarn(riskyPhrases(`${state.summary.product_title} ${state.summary.short_description} ${state.summary.sales_description}`));
-    if (state.step === 'build' || state.step === 'review') renderPrint();
-    save();
-  } else if (t.dataset.lines) {
-    setPath(state, t.dataset.lines, t.value.split('\n').map((x) => x.trim()).filter(Boolean));
-    save();
-  } else if (t.dataset.edit) {
-    setPath(state, t.dataset.edit, t.textContent.trim());
-    renderPrint();
-    save();
-  } else if (t.dataset.rejectReason) {
-    const r = state.rejected.find((x) => x.name === t.dataset.rejectReason);
-    if (r) { r.reason = t.value; save(); }
-  }
-});
-view.addEventListener('keydown', (e) => {
-  if (e.target.id === 'accessCode' && e.key === 'Enter') { e.preventDefault(); view.querySelector('[data-act=start]')?.click(); return; }
-  if (e.target.dataset.edit && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.blur(); }
-});
-
-function liveEvidence() {
-  const lvl = evidenceLevel(state.validation);
-  const idx = EVIDENCE_LEVELS.findIndex((l) => l.key === lvl.key);
-  $('evLabel').textContent = lvl.label;
-  $('evDetail').textContent = lvl.detail;
-  view.querySelectorAll('.meter i').forEach((el, n) => el.classList.toggle('on', n < idx));
-  const p = suggestPrice(state.validation.comparables);
-  $('pxVal').textContent = money(p.price);
-  $('pxNote').textContent = p.note;
-}
-
 document.addEventListener('click', async (e) => {
-  const b = e.target.closest('button');
-  if (!b || b.disabled) return;
-  const d = b.dataset;
-
-  if (d.go !== undefined) return go(d.go);
-  if (d.q !== undefined) { state.qIndex = Number(d.q); save(); return render(); }
-  if (d.pick !== undefined) { state.pick = d.pick === '' ? null : Number(d.pick); state.correction = ''; return render(); }
-  if (d.reject) { state.rejected.push({ name: d.reject, reason: '' }); if (state.pick !== null && state.strengthList[state.pick]?.name === d.reject) state.pick = null; save(); return render(); }
-  if (d.unreject) { state.rejected = state.rejected.filter((x) => x.name !== d.unreject); save(); return render(); }
-  if (d.chip) {
-    const L = state.lifestyle;
-    if (d.single === 'true') L[d.chip] = L[d.chip] === d.v ? '' : d.v;
-    else L[d.chip] = L[d.chip].includes(d.v) ? L[d.chip].filter((x) => x !== d.v) : [...L[d.chip], d.v];
-    save(); return render();
+  const t = e.target.closest('[data-ui]');
+  if (!t) return;
+  const ui = t.dataset.ui;
+  if (ui === 'example') return renderExample();
+  if (ui === 'start') { S.progress.phase = 'interview'; S.progress.index = 0; queueSave({ progress: S.progress }); return renderInterview(); }
+  if (ui === 'next') return onNext();
+  if (ui === 'skip') {
+    const q = currentQ(); const a = answerOf(q);
+    a.answer = ($('#answer')?.value || '').trim(); a.skipped = !a.answer;
+    return advance();
   }
-  if (d.idea !== undefined) {
-    const i = state.ideas[Number(d.idea)];
-    state.idea = { ...i, sourceIndex: Number(d.idea) };
-    state.outline = null; state.sections = {}; state.previous = {}; state.summary = null;
-    save(); render();
-    document.querySelector('#it')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
+  if (ui === 'skipfu') { const q = currentQ(); S.fuOpen[q.id] = false; answerOf(q).followUpAnswer = ''; return advance(); }
+  if (ui === 'back') {
+    S.note = '';
+    const q = currentQ(); const a = answerOf(q); a.answer = ($('#answer')?.value || a.answer || '').trim();
+    if (S.returnToReview) { S.returnToReview = false; S.progress.phase = 'review'; queueSave({ answers: S.answers, progress: S.progress }); return renderReview(); }
+    S.progress.index = Math.max(0, S.progress.index - 1);
+    queueSave({ answers: S.answers, progress: S.progress });
+    return renderInterview();
   }
-  if (d.rewrite) {
-    const instruction = $(`ins-${d.rewrite}`)?.value || '';
-    return run(() => writeSection(d.rewrite, { instruction }));
+  if (ui === 'edit') {
+    S.progress.index = +t.dataset.q; S.progress.phase = 'interview'; S.returnToReview = true;
+    const q = currentQ(); if (S.answers[q.id]?.followUpQuestion) S.fuOpen[q.id] = true;
+    queueSave({ progress: S.progress });
+    renderInterview(); return window.scrollTo({ top: 0 });
   }
-  if (d.undo) { state.sections[d.undo] = state.previous[d.undo]; delete state.previous[d.undo]; save(); return render(); }
-  if (d.export) return exportDoc(d.export, b);
-
-  switch (d.act) {
-    case 'start': {
-      if (ui.server.accessRequired && !(await verifyCode())) return;
-      return go(state.lastStep && reachable(state.lastStep) ? state.lastStep : 'discover');
-    }
-    case 'reset':
-      if (confirm('Start over? This clears your answers and your workbook from this browser.')) { state = blank(); save(true); render(); }
-      return;
-    case 'nextQ': return nextQuestion();
-    case 'prevQ': state.qIndex = Math.max(0, state.qIndex - 1); save(); return render();
-    case 'differentStrengths': return findStrengths({ different: true });
-    case 'confirmStrength': {
-      const s = state.strengthList[state.pick];
-      const changed = state.strength?.name !== s.name;
-      state.strength = { ...s, correction: state.correction.trim() };
-      if (changed) { state.ideas = []; state.idea = null; state.outline = null; state.sections = {}; state.summary = null; }
-      save(); return go('preferences');
-    }
-    case 'moreIdeas': return findIdeas();
-    case 'outline': return makeOutline();
-    case 'newOutline':
-      if (Object.keys(state.sections).length && !confirm('Create a new outline? This replaces the sections written so far.')) return;
-      return makeOutline();
-    case 'writeAll': return writeAll();
-    case 'redoSummary': return makeSummary();
-    case 'print': renderPrint(); return window.print();
-    case 'retry': { const r = ui.retry; ui.error = null; ui.retry = null; render(); return r?.(); }
-    default:
-  }
+  if (ui === 'goal') { S.progress.goal = +t.dataset.value; if (S.map) S.map.goal = S.progress.goal; queueSave({ progress: S.progress, ...(S.map ? { map: S.map } : {}) }); return renderReview(); }
+  if (ui === 'generate') { if (S.map) { S.confirmFresh = true; return renderReview(); } return generate(); }
+  if (ui === 'generate-confirm') return generate();
+  if (ui === 'cancel-fresh') { S.confirmFresh = false; return renderReview(); }
+  if (ui === 'tomap') { S.progress.phase = 'map'; queueSave({ progress: S.progress }); renderMapScreen(); return window.scrollTo({ top: 0 }); }
+  return undefined;
 });
 
-async function exportDoc(kind, btn) {
-  const label = btn.textContent;
-  btn.disabled = true; btn.innerHTML = '<span class="spin" aria-hidden="true"></span>Preparing…';
-  try {
-    const project = {
-      outline: { ...state.outline, title: state.summary?.product_title || state.outline.title },
-      sections: state.sections, author: state.author, summary: state.summary, strength: state.strength,
-      idea: state.idea, lifestyle: state.lifestyle, validation: state.validation,
-      evidence: evidenceLevel(state.validation),
-      price: { price: currentPrice().price, note: currentPrice().note },
-    };
-    const headers = { 'content-type': 'application/json' };
-    const code = localStorage.getItem(CODE_STORE); if (code) headers['x-access-code'] = code;
-    const res = await fetch('api/export', { method: 'POST', headers, body: JSON.stringify({ kind, project }) });
-    if (!res.ok) throw new Error('The download could not be prepared. Try again.');
-    const blob = await res.blob();
-    const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '')?.[1] || `${kind}.docx`;
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
-    document.body.append(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    toast('Downloaded.');
-  } catch (e) {
-    toast(e.message);
-  } finally {
-    btn.disabled = false; btn.textContent = label;
+document.addEventListener('input', (e) => {
+  const t = e.target;
+  if (!t.dataset.uiInput) return;
+  const q = currentQ(); const a = answerOf(q);
+  if (t.dataset.uiInput === 'answer') {
+    if (a.answer !== t.value.trim()) a.checked = false;
+    a.answer = t.value;
+    const c = $('#ansCount'); if (c) c.textContent = t.value.length;
+  } else {
+    a.followUpAnswer = t.value;
   }
-}
-
-/* ---------- Progress file (save on one device, resume on another) ---------- */
-
-$('saveFile').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify({ ...state, savedAt: new Date().toISOString(), appVersion: APP_VERSION }, null, 2)], { type: 'application/json' });
-  const name = (state.idea?.title || 'my-product').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 50) || 'my-product';
-  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${name}-progress.json` });
-  document.body.append(a); a.click(); a.remove();
-  toast('Progress file saved. Open it on any device to continue.');
+  queueSave({ answers: S.answers });
 });
-$('openFile').addEventListener('click', () => $('fileInput').click());
-$('fileInput').addEventListener('change', async (e) => {
-  const f = e.target.files?.[0];
+
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && e.target.dataset?.uiInput) { e.preventDefault(); onNext(); }
+});
+
+document.addEventListener('submit', async (e) => {
+  const f = e.target.closest('[data-ui-form="resend"]');
   if (!f) return;
+  e.preventDefault();
+  const out = $('#resendMsg');
   try {
-    const data = JSON.parse(await f.text());
-    if (data.schema !== DATA_SCHEMA) throw new Error();
-    state = { ...blank(), ...data };
-    save(true); render(); toast('Progress opened.');
-  } catch {
-    toast('That file could not be opened. Choose a progress file saved from this tool.');
+    const r = await api('/api/resend', { method: 'POST', body: { email: $('#resendEmail').value } });
+    out.innerHTML = `<div class="msg ok" role="status">${esc(r.message)}</div>`;
+  } catch (err) {
+    out.innerHTML = `<div class="msg err" role="alert">${errText(err)}</div>`;
   }
-  e.target.value = '';
 });
-
-/* ---------- Embed in GoHighLevel: report height ---------- */
-if (document.documentElement.classList.contains('embed') && window.parent !== window) {
-  const post = () => window.parent.postMessage({ type: 'pig-product-creator:height', height: document.documentElement.scrollHeight, version: APP_VERSION }, '*');
-  new ResizeObserver(post).observe(document.body);
-  post();
-}
 
 /* ---------- Start ---------- */
-$('versionLine').textContent = `Expertise-to-Digital-Product Creator v${APP_VERSION}, AI instructions v${PROMPT_VERSION}`;
-render();
-fetch('api/ai').then((r) => r.json()).then((s) => { ui.server = s; render(); autoStart(); }).catch(() => { autoStart(); });
+async function boot() {
+  const view = params.get('view');
+  if (view) {
+    app.innerHTML = `${topbar()}<div class="screen"><p class="thinking">Opening the shared map…</p></div>`;
+    try {
+      const r = await api(`/api/me?view=${encodeURIComponent(view)}`);
+      return renderShared(r.map);
+    } catch (e) {
+      return renderWelcome(errText(e));
+    }
+  }
+
+  // A link from the email (?t=) is moved out of the address bar and remembered in this browser.
+  const fromUrl = params.get('t');
+  if (fromUrl) {
+    S.token = fromUrl.trim();
+    ls.set(TOKEN_KEY, S.token);
+    params.delete('t');
+    history.replaceState(null, '', `${location.pathname}${params.toString() ? `?${params}` : ''}`);
+  } else if (params.has('demo')) {
+    try {
+      const r = await api('/api/me?demo=1');
+      S.token = r.token; ls.set(TOKEN_KEY, S.token);
+      history.replaceState(null, '', location.pathname);
+    } catch { /* demo not available here */ }
+  } else {
+    S.token = ls.get(TOKEN_KEY) || '';
+  }
+  if (!S.token) return renderWelcome();
+
+  app.innerHTML = `${topbar()}<div class="screen"><p class="thinking">Opening your map…</p></div>`;
+  try {
+    const r = await api('/api/me');
+    S.buyer = r.buyer;
+    const st = r.state || {};
+    Object.assign(S, { answers: st.answers || {}, map: st.map || null, sharedAt: st.sharedAt || null, updatedAt: st.updatedAt || null });
+    S.progress = { index: 0, phase: 'intro', goal: 100, ...(st.progress || {}) };
+    // Recover anything this browser has that never reached the server.
+    try {
+      const b = JSON.parse(ls.get(backupKey()) || 'null');
+      if (b && (!S.updatedAt || b.at > S.updatedAt)) {
+        Object.assign(S, { answers: b.answers || S.answers, map: b.map || S.map, progress: { ...S.progress, ...(b.progress || {}) } });
+        queueSave({ answers: S.answers, progress: S.progress, ...(S.map ? { map: S.map } : {}) });
+      }
+    } catch { /* ignore damaged backup */ }
+    if (S.progress.phase === 'map' && !S.map) S.progress.phase = 'review';
+    render();
+  } catch (e) {
+    if (e.status === 401) { ls.del(TOKEN_KEY); return renderWelcome(errText(e)); }
+    app.innerHTML = `${topbar()}<div class="screen"><div class="msg err" role="alert">${errText(e)}</div><div class="cta-row"><button class="btn solid" type="button" onclick="location.reload()">Try again</button></div></div>`;
+  }
+}
+
+boot();

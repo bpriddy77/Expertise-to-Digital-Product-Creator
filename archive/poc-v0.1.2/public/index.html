@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="app-version" content="0.1.2">
+<title>Expertise-to-Digital-Product Creator | Priddy Impact Group</title>
+<meta name="description" content="Discover the expertise you're good at and enjoy, and turn it into the first version of a digital product you can test.">
+<link rel="icon" href="assets/pig-monogram-gold.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=0.1.2">
+<script>
+  if (new URLSearchParams(location.search).has('embed')) document.documentElement.classList.add('embed');
+</script>
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-inner">
+    <img src="assets/pig-monogram-gold.png" alt="Priddy Impact Group">
+    <div class="rule" aria-hidden="true"></div>
+    <div>
+      <h1><span class="k">Expertise</span>-to-Digital-Product Creator</h1>
+      <p>Discover what you're genuinely good at and enjoy, and turn it into the first version of a digital product you can test.</p>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+  <nav class="progress" aria-label="Your progress" id="progress"></nav>
+  <div id="banner"></div>
+  <div id="view" aria-live="polite"></div>
+</main>
+
+<footer class="foot">
+  <img src="assets/pig-logo-full.png" alt="Priddy Impact Group">
+  <div class="links">
+    <button type="button" class="btn quiet small" id="saveFile">Save progress file</button>
+    <button type="button" class="btn quiet small" id="openFile">Open progress file</button>
+    <input type="file" id="fileInput" accept="application/json,.json" hidden>
+  </div>
+  <span id="versionLine"></span>
+  <div id="meter" class="meter-panel" hidden></div>
+</footer>
+
+<div id="printDoc" aria-hidden="true"></div>
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script type="module" src="app.js?v=0.1.2"></script>
+</body>
+</html>

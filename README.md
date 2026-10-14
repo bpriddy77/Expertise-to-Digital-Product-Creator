@@ -1,121 +1,137 @@
-# DP-001 — Expertise-to-Digital-Product Creator (proof of concept)
+# Authority Funnel Map (DP-001) v0.6.0
 
-**Version 0.1.2** (AI instructions 1.0.0, data schema 1). See `CHANGELOG.md`.
+Priddy Impact Group's $9 app. An established business owner answers a short guided interview and gets their **Authority Funnel Map**: one to five digital products (main product, order bump, upsell, downsell, one-time offer), built from what they already have, leading to their signature offer. Everything on the map can be edited, priced, exported and shared.
 
-A guided, AI-assisted tool that helps a customer find expertise they're good at **and** enjoy, shape it into a product idea, check the market, and leave with an editable first version of a **workbook**, plus a product summary with a description, a starting price to test and a launch checklist.
+Earlier proof of concept (v0.1.2, workbook builder) is kept in `archive/poc-v0.1.2/` and is no longer deployed.
 
-This proof of concept answers two questions before the full build:
-1. **Is the output good enough?** Does a real person end up with a workbook they'd actually sell?
-2. **What does one customer cost in AI usage?** At a $7 price, this decides the limits.
+---
 
-## Run it
+## How it fits together
 
-```bash
-npm install
-npm test            # 31 server tests (prompts, guardrails, schemas, cost, exports)
-npm run dev         # http://localhost:8790, test mode: sample AI responses, no key, no cost
-ANTHROPIC_API_KEY=sk-ant-... npm run dev     # live AI
+```
+Buyer pays $9 in HighLevel
+  → HighLevel workflow calls  /api/purchase?key=…   (creates the buyer, writes their personal link
+                                                      into the contact field "Authority Map Link")
+  → HighLevel emails the link  {{contact.authority_map_link}}
+Buyer opens the link → interview → map  (saved to Supabase, works on any device)
+Buyer clicks "Send to Priddy Impact Group" → note + tag on their HighLevel contact
+Every day at 08:17 UTC → /api/cleanup deletes data inactive for 12 months
 ```
 
-Browser test of the full journey (needs Playwright): `python3 test/e2e.py http://localhost:8790` (36 checks).
-Access-code test: run a preview with `ACCESS_CODE=pig-test-42 PORT=8791 npm run dev`, then `python3 test/access-e2e.py` (11 checks).
+| Piece | Where |
+|---|---|
+| Pages | `public/` (index.html, app.js, map-view.js, app.css, map.css) |
+| Questions | `public/shared/interview.js` |
+| Map format and rules | `public/shared/map-model.js` (schema `opportunity-map/2`) |
+| Buyer-facing links (booking, course, calculator, support email) | `public/shared/config.js` |
+| AI instructions | `lib/prompts.js`, response formats `lib/schemas.js`, safety checks `lib/guardrails.js` |
+| Server endpoints | `api/` (ai, me, purchase, share, resend, cleanup, check) |
+| Database setup | `supabase/schema.sql` |
+| Approved design prototype | `prototype/` (not deployed) |
 
-Add `?debug=1` to the URL to show the **AI cost meter**: calls per step, tokens and dollars.
+---
 
-## Deploy to Vercel
+## Setup for Britt (one time)
 
-1. Push this folder to GitHub and import it in Vercel. Framework preset: **Other**. Leave Build Command empty. `vercel.json` sets the output folder to `public` and the API functions.
-2. Settings → Environment Variables:
+You already created the Supabase project, the HighLevel product, the custom field, the Private Integration token, and five Vercel variables. Remaining steps:
 
-| Variable | Required | Purpose |
+### 1. Create the database tables
+Supabase → your project → **SQL Editor** → **New query** → paste everything in `supabase/schema.sql` → **Run**. It should say "Success. No rows returned." Running it twice is harmless.
+
+### 2. Add two more Vercel variables
+Vercel → project → **Settings → Environment Variables** (mark both **Sensitive**):
+
+| Name | Value |
+|---|---|
+| `CRON_SECRET` | another long random password (30+ characters). Vercel uses it to run the daily clean-up. |
+| `APP_URL` | the app's public address, e.g. `https://your-project.vercel.app` or your custom domain (no slash at the end). Links in emails use this. |
+
+You can delete the old `ACCESS_CODE` variable; it is no longer used.
+
+### 3. Deploy
+Replace the repository contents with this version (keep `.git`), commit and push. Vercel deploys automatically. Then **Redeploy** once from the Vercel dashboard so the new variables are picked up.
+
+### 4. Run the setup check
+Open: `https://YOUR-APP/api/check?key=YOUR_GHL_WEBHOOK_SECRET&contact=A_TEST_CONTACT_ID`
+(a contact ID is in the address bar when you open a contact in HighLevel). You want `"ok": true`, with `ai.ok`, `database.ok` and `highlevel.ok` all `true`. If not, the `problem` line says what to fix.
+
+### 5. HighLevel workflow 1: purchase → link email
+Automation → Workflows → **Create workflow** → Start from scratch. Name: *Authority Funnel Map: send link*.
+1. **Trigger: Order Submitted.** Filter: product is *Authority Funnel Map*. (This trigger also fires for upsells and bumps; the product filter keeps it to this purchase, and the app never creates duplicates.)
+2. **Action: Webhook.** Method POST. URL: `https://YOUR-APP/api/purchase?key=YOUR_GHL_WEBHOOK_SECRET`. Under **Custom data** add:
+   - `contact_id` = `{{contact.id}}`
+   - `email` = `{{contact.email}}`
+   - `first_name` = `{{contact.first_name}}`
+3. **Action: Wait** 1 minute (gives the app time to write the link).
+4. **Action: Send email.** Suggested subject: *Your Authority Funnel Map is ready to start*. Body must include the button or link `{{contact.authority_map_link}}`. Suggested text: "Use this personal link to start (and come back to) your Authority Funnel Map. It saves as you go and works on any device. Please don't share it: it opens your private answers."
+5. Publish.
+
+### 6. HighLevel workflow 2: "email me my link"
+Trigger **Contact Tag added**: `authority-map-resend-link` → **Send email** (same email as above) → **Remove contact tag** `authority-map-resend-link`. Publish.
+
+### 7. Optional workflow 3: tell Malissa when a map is shared
+Trigger **Contact Tag added**: `authority-map-shared` → **Internal notification** to Malissa ("{{contact.name}} shared their Authority Funnel Map. See the contact's notes for the summary and link."). The map summary and a read-only link are already added as a note on the contact.
+
+### 8. Fill in buyer-facing links
+Edit `public/shared/config.js`: `bookingUrl` (HighLevel calendar), `courseUrl` ($47 course), `calculatorUrl` ($17 calculator), `supportEmail`. Empty values simply hide that button. Commit and push.
+
+### 9. Test purchase
+Buy the product with a 100% coupon (or HighLevel test mode). You should receive the email; the link opens the welcome screen; answer a few questions, close the tab, reopen the link on your phone, and continue where you left off.
+
+---
+
+## Environment variables
+
+| Name | Needed | What it is |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | For live AI | Kept on the server only, never sent to the browser. Without it the tool runs in test mode. |
-| `ACCESS_CODE` | Recommended for testing | Testers enter it once on the welcome screen; the server checks it before anyone gets in. Stops strangers spending your AI credits until paid access is built. After changing it, **redeploy** so the new value takes effect. |
-| `AI_MODE` | Optional | `mock` forces test mode even with a key. |
-| `MODEL_FAST` / `MODEL_SMART` | Optional | Leave unset. The tool picks from the models your key can use: Haiku for the quick answer check, Sonnet for everything written (prefers `claude-haiku-5-5` / `claude-sonnet-5-5`). Set these only to force a specific model. |
+| `ANTHROPIC_API_KEY` | yes | Claude API key (secret) |
+| `SUPABASE_URL` | yes | Supabase project URL |
+| `SUPABASE_SECRET_KEY` | yes | Supabase secret key (`sb_secret_…` or legacy `service_role`) (secret) |
+| `GHL_PRIVATE_TOKEN` | yes | HighLevel Private Integration token, scopes `contacts.readonly` + `contacts.write` (secret) |
+| `GHL_LOCATION_ID` | yes | HighLevel sub-account (location) ID |
+| `GHL_WEBHOOK_SECRET` | yes | long random password; in the webhook URL, the setup check, and used to sign personal links (secret) |
+| `CRON_SECRET` | yes | long random password for the daily clean-up (secret) |
+| `APP_URL` | recommended | public address used in emailed links |
+| `LINK_SECRET` | optional | separate signing secret for links (otherwise derived from `GHL_WEBHOOK_SECRET`). Changing it turns off every existing link. |
+| `GHL_LINK_FIELD_KEY` | optional | custom field key if not `authority_map_link` |
+| `AI_CALL_LIMIT` / `MAP_LIMIT` | optional | per-buyer limits (defaults 120 AI calls, 8 fresh maps) |
+| `RETENTION_MONTHS` | optional | default 12 |
+| `MODEL_FAST` / `MODEL_SMART` | optional | model overrides; otherwise picked automatically from what the key can use |
 
-3. Redeploy. The footer shows the version; a gold "Test mode" banner appears whenever the AI isn't live.
-4. **Run the setup check:** open `https://YOUR-SITE/api/ai?check=1&code=YOUR_ACCESS_CODE`. You should see `"ok": true`, the two models in use, and `"working"` for both tests.
+Never put any of these in the code, the repository or a chat. They belong only in Vercel.
+
+---
+
+## Privacy and data
+
+- Stored per buyer: HighLevel contact ID, email, first name, interview answers, the map, usage counts and dates. Nothing else.
+- Tables are locked (row level security, no policies); only the server can read them. Customer text is never written to logs.
+- Data is deleted automatically after 12 months without a visit, or at once with **Delete my data** at the bottom of the map.
+- Priddy Impact Group sees a map only if the buyer clicks **Send to Priddy Impact Group**. They can stop sharing at any time; the old view link then stops working.
+- Turning off a buyer's link: in Supabase, Table Editor → `buyers` → raise `link_version` by 1. Their next "email me my link" request sends a new one.
+
+## AI behaviour
+
+- **Interview** (fast model): after each answer, at most one follow-up when something important is missing, plus examples for the next question tailored to their kind of business. If the AI is unavailable, the interview simply continues.
+- **Map** (smart model): products only from what the owner said; facts must quote their words (otherwise shown as assumptions); prices clamped to published ranges per position; income-claim wording removed; result validated before it is shown.
+- Typical cost per buyer: well under $1 (about 13 short Haiku calls plus one or two Sonnet maps).
+
+## Local preview and tests
+
+```
+npm run dev                      # http://localhost:8790/?demo=1  (test mode, no keys)
+npm test                         # server tests (node)
+PORT=8791 npm run dev & python3 test/app-e2e.py     # full browser journey (Playwright)
+cd prototype && node --test test/ && python3 build.py && python3 test/map-e2e.py   # approved map prototype
+```
 
 ## Troubleshooting
 
-| What you see | What to do |
+| Symptom | Fix |
 |---|---|
-| "The AI isn't available right now" | Open the setup check above. It names the cause. Add `?debug=1` to the page address to see the same detail on screen. |
-| Setup check: "API key was rejected" | Re-copy the key into `ANTHROPIC_API_KEY` (no spaces), save, redeploy. |
-| Setup check: "Billing problem" | Add a payment method or credits in the Claude Console. |
-| Setup check: "Spend limit reached" | Raise the workspace limit in the Claude Console (Settings → Workspaces → Limits). |
-| Setup check: "isn't allowed to use that model or workspace" | Check which workspace the key belongs to in the Claude Console. |
-| Gold "Test mode" banner on the live site | `ANTHROPIC_API_KEY` isn't set for this environment, or the site wasn't redeployed after adding it. |
-
-Vercel → your project → Logs shows one line per AI call (step, model, tokens, cost) and per error (cause and Anthropic request ID). Customer text is never logged.
-
-## The journey
-
-| Step | What happens | AI |
-|---|---|---|
-| Discover | 5 questions asking for real examples. One follow-up per question if an answer is vague. | Haiku (answer check) |
-| Your strength | Up to 3 strengths, each backed by **quotes from the customer's own answers**. Confirm, reword, or turn down; "Suggest different" excludes rejected ones. | Sonnet |
-| Preferences | Work they enjoy, things to avoid, time per week, involvement level. | None |
-| Product ideas | Up to 3 workbook ideas that respect the preferences, with "still to check" items. Chosen idea is editable. | Sonnet |
-| Market check | Guided research with search links, comparable prices, real questions, interest counts. Evidence level and suggested test price update live. | None |
-| Build | Outline (renamable), then each section written separately. Edit any text in place, rewrite one section with an instruction, undo a rewrite. | Sonnet |
-| Review & export | Title, descriptions, who it's for, what they get, price, launch checklist (all editable). Downloads below. | Sonnet (once) |
-
-**Exports:** workbook as Word (.docx, opens in Word, Google Docs, Pages and Canva), print or Save as PDF with ruled writing space, and the product summary as Word. The workbook uses neutral styling because it is the customer's product.
-
-**Save and resume:** autosaves in the browser; "Save progress file" / "Open progress file" moves a project between devices.
-
-## Guardrails (how the brief's AI rules are enforced)
-
-| Brief rule | Enforcement |
-|---|---|
-| Don't invent qualifications or accomplishments | Every strength must cite quotes; the server checks each quote really appears in the customer's answers and **drops any strength without genuine evidence** (`lib/guardrails.js`, tested). |
-| Distinguish ability from interest | Each strength is labeled "Shown in what you've done", "Something you enjoy" or "Done it and enjoy it". |
-| Ask clarifying questions when vague | One follow-up per question when an answer has no concrete example. |
-| Don't monetize every skill; respect preferences | Preferences go into the idea prompt; "things to avoid" are excluded. |
-| Reject without restarting | Rejected strengths (with reasons) are passed back and not suggested again. |
-| No fabricated testimonials, stats, credentials or earnings claims | In the system prompt for every call; the review screen flags income-claim wording ("passive income", "$X a month", guarantees) as the customer edits. |
-| Don't call a product validated without evidence | Evidence levels only rise with real entries, and never say "validated" or "profitable" (tested). |
-| Customer text can't redirect the AI | Answers are wrapped in tags with `<`/`>` neutralized, and the AI is told to treat them as information only (tested). |
-
-AI responses use structured outputs (`output_config.format` JSON schemas in `lib/schemas.js`); a test checks every schema meets the API's rules.
-
-## Cost control at $7
-
-Per-project limits (`public/shared/rules.js`): 5 follow-ups, 3 strength rounds, 3 idea rounds, 2 outlines, 10 section drafts, 8 rewrites, 2 summaries. Every count is shown to the customer ("2 of 3 left"), and when one runs out they can keep editing by hand.
-
-**Test-mode estimate:** a complete run is **16 AI calls and about $0.04** by text length. That estimate understates real usage, because sample responses are shorter than real writing. Expect a live run to cost roughly **$0.15–$0.40**, and confirm with the cost meter.
-
-**To do during the proof of concept:** run 5–10 real people through with `?debug=1`, record the meter total for each, and set the limits from the highest. Server logs record step, model, tokens and cost for every call, never the customer's text.
-
-**Limits are enforced in the browser for now.** A determined user could reset them. Server-side limits per customer arrive with paid access (accounts), and the `ACCESS_CODE` covers testing until then.
-
-## Privacy
-
-Answers stay in the customer's browser. The server forwards text to the Claude API to create suggestions and stores nothing. Before launch, review Anthropic's API data-retention terms and reflect them in the privacy note on the welcome screen and in your privacy policy.
-
-## Versioning
-
-`public/shared/version.js` is the single source (the server re-exports it). Bump `APP_VERSION` every build; bump `PROMPT_VERSION` whenever a prompt or schema changes; bump `DATA_SCHEMA` when the saved project format changes. Update `package.json`, the `app-version` meta tag and the `?v=` on assets in `index.html`, and add a `CHANGELOG.md` entry.
-
-## Not in this proof of concept
-
-Checklist, template and guide formats (next after workbooks are proven); AI-assisted market research with web search; paid access through GoHighLevel with server-side limits; branding and layout customization (EP-13); multiple products per customer (EP-14); passing the product into the Authority Funnel Revenue Calculator.
-
-## Files
-
-```
-api/ai.js            AI endpoint (steps, access code, limits, cost)
-api/export.js        Word exports
-lib/prompts.js       AI instructions (server only)
-lib/schemas.js       Structured output schemas
-lib/guardrails.js    Quote verification and response cleanup
-lib/claude.js        Claude API client (no SDK)
-lib/mock.js          Test-mode responses
-lib/docx-builder.js  Workbook and summary documents
-lib/pricing.js       Model prices for the cost meter
-public/              The page (index.html, app.js, styles.css, shared/)
-scripts/dev-server.mjs  Local preview that runs the API like Vercel
-test/                server.test.js (node), e2e.py (browser)
-```
+| Email arrives without a link | The workflow's Wait step is missing, or the field key differs. Check the setup check's `linkField` and the contact's *Authority Map Link* field. |
+| "This link is not valid" | Link was copied incompletely, `GHL_WEBHOOK_SECRET`/`LINK_SECRET` changed, or the buyer deleted their data. Use "Email me my link". |
+| "Saving is not available right now" | Database problem: run the setup check; usually `schema.sql` not run or a wrong `SUPABASE_SECRET_KEY`. |
+| Webhook shows 401 in HighLevel | The `key=` in the webhook URL doesn't match `GHL_WEBHOOK_SECRET`. |
+| HighLevel 403 in the setup check | The Private Integration needs `contacts.readonly` and `contacts.write`. |
+| Map creation fails | Open the page with `?debug=1` to see the cause, or check Vercel logs (`ai_error:map`). |

@@ -1,0 +1,1868 @@
+<title>Opportunity Map Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>/* Digital Product Opportunity Map
+   Layout: a client-journey board (four stage columns) above a rail of the existing offers,
+   with connectors from suggested products down to the offers they serve.
+   Brand: warm cream ground, dark teal, restrained gold (Priddy Impact Group). Single light theme by choice. */
+:root {
+  --cream: #F6F0E4;
+  --paper: #FFFDF8;
+  --sand: #EFE3CF;
+  --line: #E2D7C3;
+  --teal: #004053;
+  --teal-deep: #002B38;
+  --teal-soft: #E3ECEC;
+  --ink: #18323C;
+  --ink-soft: #55656C;
+  --gold: #BEAE88;
+  --gold-deep: #8A7A52;
+  --gold-wash: #F3ECDC;
+  --role-paid: #004053;
+  --role-free: #4C7A6B;
+  --role-onboarding: #6A6F86;
+  --role-included: #8A7A52;
+  --rel-prepares: #004053;
+  --rel-supports: #8A7A52;
+  --rel-leads: #4C7A6B;
+  --font: 'Poppins', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --r: 12px;
+  --shadow: 0 1px 2px rgb(0 43 56 / 6%), 0 10px 28px -14px rgb(0 43 56 / 28%);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--cream); color: var(--ink); font: 400 15px/1.55 var(--font); }
+h1, h2, h3, h4 { text-wrap: balance; margin: 0; }
+button { font-family: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--gold-deep); outline-offset: 3px; }
+[hidden] { display: none !important; }
+
+.wrap { max-width: 1280px; margin: 0 auto; padding-inline: 20px; }
+@media (max-width: 520px) { .wrap { padding-inline: 16px; } }
+
+/* ---------- Header ---------- */
+.mast { background: var(--teal); color: var(--paper); padding-block: 28px 30px; position: relative; overflow: hidden; }
+.mast::after {
+  content: ''; position: absolute; right: -120px; top: -160px; width: 520px; height: 520px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(190 174 136 / 22%), transparent); pointer-events: none;
+}
+.mast-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; align-items: end; position: relative; z-index: 1; }
+@media (max-width: 900px) { .mast-grid { grid-template-columns: 1fr; gap: 18px; } }
+.kicker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.tag { font-size: 0.72rem; font-weight: 500; letter-spacing: 0.02em; padding: 3px 10px; border-radius: 999px; border: 1px solid rgb(190 174 136 / 60%); color: var(--gold); }
+.mast h1 { font-size: clamp(1.6rem, 3.6vw, 2.4rem); font-weight: 600; line-height: 1.12; letter-spacing: -0.01em; }
+.mast h1 span { color: var(--gold); }
+.mast .biz { margin: 10px 0 0; color: rgb(255 253 248 / 82%); font-weight: 300; max-width: 46rem; }
+.mast .biz b { color: var(--paper); font-weight: 500; }
+.insum { background: rgb(255 253 248 / 7%); border: 1px solid rgb(190 174 136 / 35%); border-radius: var(--r); padding: 16px 18px; }
+.insum h2 { font-size: 0.8rem; font-weight: 600; color: var(--gold); margin-bottom: 6px; letter-spacing: 0.02em; }
+.insum p { margin: 0; font-size: 0.9rem; line-height: 1.6; color: rgb(255 253 248 / 90%); }
+
+/* ---------- Toolbar ---------- */
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; padding-block: 16px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.78rem; color: var(--ink-soft); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.sw { width: 18px; height: 12px; border-radius: 3px; flex: none; }
+.sw.k-asset { background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--teal); }
+.sw.k-problem { background: var(--sand); }
+.sw.k-opp { background: var(--paper); border: 1.5px dashed var(--gold-deep); }
+.sw.k-first { background: var(--gold-wash); border: 2px solid var(--gold-deep); }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.saved { font-size: 0.78rem; color: var(--ink-soft); min-width: 7.5em; text-align: right; }
+.btn {
+  font: 500 0.85rem var(--font); border-radius: 999px; padding: 8px 16px; cursor: pointer; border: 1.5px solid var(--teal);
+  background: var(--paper); color: var(--teal); transition: background-color .15s, color .15s;
+}
+.btn:hover { background: var(--teal); color: var(--paper); }
+.btn.solid { background: var(--teal); color: var(--paper); }
+.btn.solid:hover { background: var(--teal-deep); }
+.btn.quiet { border-color: transparent; background: transparent; }
+.btn.quiet:hover { background: var(--teal-soft); color: var(--teal); }
+.btn.danger { border-color: #A33B32; color: #A33B32; }
+.btn.danger:hover { background: #A33B32; color: var(--paper); }
+.btn.small { padding: 5px 12px; font-size: 0.78rem; }
+
+/* ---------- Board ---------- */
+.board-wrap { position: relative; }
+.board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; position: relative; z-index: 1; }
+.lane { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.lane-head { padding: 12px 14px 10px; border-radius: var(--r) var(--r) 0 0; background: var(--paper); border-top: 3px solid var(--teal); box-shadow: var(--shadow); }
+.lane-head h2 { font-size: 0.98rem; font-weight: 600; color: var(--teal); }
+.lane-head .hint { font-size: 0.72rem; color: var(--ink-soft); }
+.lane-head .proc { margin: 8px 0 0; font-size: 0.78rem; color: var(--ink); padding-top: 8px; border-top: 1px solid var(--line); }
+.lane-head .proc b { font-weight: 600; color: var(--ink-soft); font-size: 0.68rem; display: block; letter-spacing: 0.02em; }
+.group-label { font-size: 0.7rem; font-weight: 600; color: var(--ink-soft); letter-spacing: 0.03em; margin: 4px 2px -2px; }
+
+.asset {
+  background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: 8px;
+  padding: 7px 10px; font-size: 0.8rem; line-height: 1.35; transition: box-shadow .2s, opacity .2s;
+}
+.asset small { display: block; font-size: 0.66rem; color: var(--ink-soft); }
+.problem { background: var(--sand); border-radius: 8px; padding: 8px 10px; font-size: 0.8rem; line-height: 1.4; transition: box-shadow .2s, opacity .2s; }
+.empty-note { font-size: 0.74rem; color: var(--ink-soft); font-style: italic; padding: 2px 2px; }
+
+.opp {
+  display: block; width: 100%; text-align: left; cursor: pointer; background: var(--paper);
+  border: 1.5px dashed var(--gold-deep); border-radius: var(--r); padding: 12px 12px 11px; box-shadow: var(--shadow);
+  transition: transform .15s, box-shadow .2s, border-color .2s;
+}
+.opp:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgb(0 43 56 / 8%), 0 16px 30px -14px rgb(0 43 56 / 35%); }
+.opp.first { border: 2px solid var(--gold-deep); background: var(--gold-wash); }
+.opp .ribbon { display: inline-block; font-size: 0.66rem; font-weight: 600; color: var(--paper); background: var(--gold-deep); border-radius: 999px; padding: 2px 9px; margin-bottom: 6px; }
+.opp h3 { font-size: 0.95rem; font-weight: 600; line-height: 1.3; color: var(--teal-deep); }
+.opp .outcome { margin: 4px 0 8px; font-size: 0.8rem; color: var(--ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.role { font-size: 0.68rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: var(--paper); }
+.role.paid { background: var(--role-paid); }
+.role.free { background: var(--role-free); }
+.role.onboarding { background: var(--role-onboarding); }
+.role.included { background: var(--role-included); }
+.status { font-size: 0.68rem; font-weight: 500; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-soft); background: var(--paper); }
+.status.evidence { border-color: var(--teal); color: var(--teal); }
+.status.hypothesis { border-style: dashed; }
+.opp .meta { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 0.72rem; color: var(--ink-soft); display: grid; gap: 3px; }
+.opp .meta b { color: var(--ink); font-weight: 500; }
+.opp .open { margin-top: 8px; font-size: 0.72rem; font-weight: 600; color: var(--gold-deep); }
+
+/* Highlighting what an idea came from and what it connects to */
+.board-wrap.focusing .asset, .board-wrap.focusing .problem, .board-wrap.focusing .opp, .board-wrap.focusing .offer { opacity: .4; }
+.board-wrap.focusing .lit { opacity: 1 !important; box-shadow: 0 0 0 2px var(--gold-deep); }
+.board-wrap.focusing .opp.lit { box-shadow: 0 0 0 3px var(--gold-deep), var(--shadow); }
+
+/* ---------- Offers rail ---------- */
+.rail { position: relative; z-index: 1; margin-top: 64px; padding: 16px; border-radius: var(--r); background: var(--teal-soft); border: 1px solid #CFDCDC; }
+.rail-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.rail-head h2 { font-size: 0.98rem; font-weight: 600; color: var(--teal); }
+.rail-head p { margin: 0; font-size: 0.76rem; color: var(--ink-soft); }
+.offers { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; }
+.offer {
+  flex: 0 1 320px; min-width: 0; background: var(--teal); color: var(--paper); border-radius: var(--r); padding: 14px 16px;
+  box-shadow: var(--shadow); cursor: pointer; text-align: left; border: 0; font: inherit; transition: opacity .2s, box-shadow .2s;
+}
+.offer .k { font-size: 0.68rem; font-weight: 500; color: var(--gold); letter-spacing: 0.02em; }
+.offer h3 { font-size: 1.05rem; font-weight: 600; }
+.offer .price { font-weight: 600; color: var(--gold); font-variant-numeric: tabular-nums; }
+.offer p { margin: 4px 0 0; font-size: 0.78rem; color: rgb(255 253 248 / 80%); }
+.offer .fed { margin-top: 8px; font-size: 0.72rem; color: rgb(255 253 248 / 88%); }
+
+svg.links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: visible; }
+svg.links path { fill: none; stroke-width: 2; opacity: .55; transition: opacity .2s, stroke-width .2s; }
+svg.links path.prepares { stroke: var(--rel-prepares); }
+svg.links path.supports { stroke: var(--rel-supports); stroke-dasharray: 6 5; }
+svg.links path.leads { stroke: var(--rel-leads); stroke-dasharray: 2 5; stroke-linecap: round; }
+.board-wrap.focusing svg.links path { opacity: .12; }
+.board-wrap.focusing svg.links path.lit { opacity: 1; stroke-width: 3; }
+.rel-key { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.74rem; color: var(--ink-soft); margin-top: 10px; justify-content: center; }
+.rel-key span { display: inline-flex; gap: 6px; align-items: center; }
+.rel-key svg { flex: none; }
+
+@media (max-width: 1000px) {
+  .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  svg.links { display: none; }
+  .rail { margin-top: 22px; }
+}
+@media (max-width: 600px) { .board { grid-template-columns: 1fr; } }
+
+/* ---------- Recommendation and roles ---------- */
+.below { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; margin-top: 22px; align-items: start; }
+@media (max-width: 900px) { .below { grid-template-columns: 1fr; } }
+.panel { background: var(--paper); border-radius: var(--r); box-shadow: var(--shadow); padding: 22px 22px 20px; border: 1px solid var(--line); }
+.panel.rec { border: 2px solid var(--gold-deep); }
+.panel-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+.panel .eyebrow { font-size: 0.74rem; font-weight: 600; color: var(--gold-deep); }
+.panel h2 { font-size: 1.3rem; font-weight: 600; color: var(--teal-deep); line-height: 1.25; }
+.panel h3 { font-size: 0.86rem; font-weight: 600; color: var(--teal); margin: 16px 0 6px; }
+.panel ul { margin: 0; padding-left: 18px; display: grid; gap: 5px; font-size: 0.88rem; }
+.panel p { margin: 0; font-size: 0.88rem; }
+.step-box { margin-top: 8px; padding: 12px 14px; border-radius: 10px; background: var(--gold-wash); border-left: 3px solid var(--gold-deep); font-size: 0.88rem; }
+.assume li { list-style: none; position: relative; }
+.assume { padding-left: 0 !important; }
+.assume li::before { content: '?'; position: absolute; left: -2px; top: 1px; width: 16px; height: 16px; border-radius: 50%; border: 1px dashed var(--ink-soft); font-size: 0.66rem; display: grid; place-items: center; color: var(--ink-soft); }
+.assume li { padding-left: 24px; }
+.note { font-size: 0.78rem; color: var(--ink-soft); margin-top: 12px; }
+
+.roles-list { display: grid; gap: 12px; }
+.role-group h3 { margin: 0 0 4px; display: flex; gap: 8px; align-items: center; }
+.role-group p { font-size: 0.76rem; color: var(--ink-soft); margin: 0 0 6px; }
+.role-group ul { list-style: none; padding: 0; gap: 4px; }
+.role-group li button { border: 0; background: none; padding: 0; cursor: pointer; text-align: left; font: 500 0.86rem var(--font); color: var(--teal-deep); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.role-group li button:hover { text-decoration-color: var(--gold-deep); }
+.role-group .none { font-size: 0.78rem; color: var(--ink-soft); font-style: italic; }
+
+.fits { margin-top: 22px; padding: 16px 18px; border-radius: var(--r); border: 1px dashed var(--gold-deep); display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
+.fits ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 0.8rem; }
+.fits li { padding: 4px 10px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); }
+.fits li.here { background: var(--teal); color: var(--paper); border-color: var(--teal); }
+.fits li + li::before { content: ''; }
+.fits .arrow { color: var(--gold-deep); padding: 0; border: 0; background: none; }
+.fits p { margin: 0; font-size: 0.8rem; color: var(--ink-soft); }
+@media (max-width: 700px) { .fits { grid-template-columns: 1fr; } }
+
+.removed { margin-top: 16px; font-size: 0.82rem; }
+.removed summary { cursor: pointer; color: var(--ink-soft); }
+.removed ul { margin: 8px 0 0; padding-left: 18px; }
+
+footer.foot { padding-block: 28px 40px; font-size: 0.74rem; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; }
+
+/* ---------- Edit drawer ---------- */
+.scrim { position: fixed; inset: 0; background: rgb(0 43 56 / 28%); z-index: 30; }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 100vw); background: var(--paper); z-index: 31;
+  box-shadow: -20px 0 50px -20px rgb(0 43 56 / 45%); display: flex; flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.drawer header { padding: 18px 20px 12px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.drawer header h2 { font-size: 1.1rem; font-weight: 600; color: var(--teal-deep); }
+.drawer header p { margin: 2px 0 0; font-size: 0.76rem; color: var(--ink-soft); }
+.drawer .body { overflow-y: auto; padding: 16px 20px 24px; display: grid; gap: 14px; }
+.drawer footer { padding: 12px 20px 16px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+.f label, .f .lbl { display: block; font-size: 0.78rem; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.f .sub { font-weight: 400; color: var(--ink-soft); }
+.f input[type=text], .f textarea, .f select {
+  width: 100%; font: 400 0.9rem/1.45 var(--font); color: var(--ink); background: var(--cream); border: 1.5px solid transparent;
+  border-radius: 8px; padding: 9px 11px;
+}
+.f textarea { min-height: 72px; resize: vertical; }
+.f input:focus, .f textarea:focus, .f select:focus { outline: none; border-color: var(--gold-deep); background: var(--paper); }
+.role-pick { display: grid; gap: 6px; }
+.role-pick label { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: start; padding: 8px 10px; border-radius: 8px; border: 1.5px solid var(--line); cursor: pointer; font-weight: 400; margin: 0; }
+.role-pick input { margin-top: 4px; accent-color: var(--teal); }
+.role-pick b { font-size: 0.84rem; font-weight: 600; }
+.role-pick small { grid-column: 2; font-size: 0.74rem; color: var(--ink-soft); }
+.role-pick label:has(input:checked) { border-color: var(--teal); background: var(--teal-soft); }
+.conn-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; font-size: 0.84rem; margin-bottom: 6px; }
+.ev-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: start; margin-bottom: 6px; }
+.ev-row textarea { min-height: 44px; }
+.toggle { font: 500 0.7rem var(--font); border-radius: 999px; padding: 5px 9px; cursor: pointer; border: 1px solid var(--teal); background: var(--paper); color: var(--teal); white-space: nowrap; }
+.toggle.assumption { border-style: dashed; border-color: var(--ink-soft); color: var(--ink-soft); }
+.x { border: 0; background: none; cursor: pointer; font-size: 1.1rem; line-height: 1; padding: 4px 6px; color: var(--ink-soft); border-radius: 6px; }
+.x:hover { background: var(--sand); color: var(--ink); }
+.src-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.src-list span { font-size: 0.74rem; padding: 3px 8px; border-radius: 6px; }
+.src-list .a { background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--teal); }
+.src-list .p { background: var(--sand); }
+.confirm { padding: 12px; border-radius: 8px; background: #F7E6E3; font-size: 0.84rem; display: grid; gap: 8px; }
+
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--teal-deep); color: var(--paper); padding: 10px 14px 10px 18px; border-radius: 999px; font-size: 0.85rem; z-index: 40; display: flex; gap: 12px; align-items: center; box-shadow: var(--shadow); max-width: calc(100vw - 32px); }
+.toast button { border: 0; background: var(--gold); color: var(--teal-deep); font: 600 0.78rem var(--font); padding: 5px 12px; border-radius: 999px; cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+
+/* Prototype review bar (not part of the customer's map) */
+.review-bar { background: var(--gold-wash); border-bottom: 1px solid var(--line); font-size: 0.82rem; color: var(--ink); }
+.review-bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-top: 10px; padding-bottom: 10px; }
+.review-bar select { font: inherit; color: var(--teal); font-weight: 600; background: var(--paper); border: 1px solid var(--gold-deep); border-radius: 8px; padding: 6px 30px 6px 10px; max-width: 100%; }
+.review-bar select:focus-visible { outline: 3px solid color-mix(in srgb, var(--gold) 60%, transparent); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Authority Funnel (v0.4.0) ---------- */
+.funnel { margin: 6px 0 4px; padding: 22px; border-radius: calc(var(--r) + 4px); background: var(--paper); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.fun-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px 28px; align-items: end; margin-bottom: 18px; }
+.fun-head h2 { font-size: 1.3rem; line-height: 1.25; color: var(--teal-deep); margin: 2px 0 6px; text-wrap: balance; }
+.fun-head p { margin: 0; font-size: 0.86rem; color: var(--ink-soft); max-width: 62ch; }
+.fun-head p b { color: var(--teal); font-weight: 600; }
+.aov { display: flex; gap: 10px; margin: 0; }
+.aov div { padding: 10px 14px; border-radius: 12px; background: var(--gold-wash); border: 1px solid var(--line); min-width: 9.5em; }
+.aov dt { font-size: 0.7rem; letter-spacing: 0.02em; color: var(--ink-soft); }
+.aov dd { margin: 2px 0 0; font-size: 1.35rem; font-weight: 700; color: var(--teal-deep); font-variant-numeric: tabular-nums; }
+
+.fun-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.05fr); gap: 26px; align-items: stretch; }
+.fun-col { position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fun-col:not(.dest-col)::after { content: ''; position: absolute; top: 46px; right: -21px; width: 16px; height: 16px;
+  background: no-repeat center / 16px 16px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 8h10M8 3l5 5-5 5' fill='none' stroke='%238A7A52' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.slot { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 5px; padding: 14px; border-radius: 14px; background: var(--paper); border: 1.5px solid var(--teal); flex: 1; transition: transform .15s ease, box-shadow .15s ease; }
+.slot:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.slot:focus-visible, .dest:focus-visible, .pick:focus-visible { outline: 3px solid color-mix(in srgb, var(--gold) 70%, transparent); outline-offset: 2px; }
+.slot.first { background: var(--gold-wash); border-color: var(--gold-deep); box-shadow: inset 0 0 0 1px var(--gold-deep); }
+.slot.empty { border: 1.5px dashed var(--line); background: transparent; color: var(--ink-soft); justify-content: flex-start; }
+.slot.empty:hover { border-color: var(--gold-deep); background: var(--gold-wash); }
+.slot-k { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gold-deep); }
+.slot-price { font-size: 0.95rem; letter-spacing: 0; text-transform: none; color: var(--teal-deep); }
+.slot-when { font-size: 0.72rem; color: var(--ink-soft); line-height: 1.35; }
+.slot h3 { font-size: 0.98rem; line-height: 1.3; color: var(--teal-deep); margin: 4px 0 2px; }
+.slot-line { font-size: 0.76rem; line-height: 1.4; color: var(--ink); }
+.slot-line b { font-weight: 600; color: var(--teal); }
+.slot-add { margin-top: auto; padding-top: 10px; font-size: 0.8rem; font-weight: 600; color: var(--teal); }
+.have { margin-top: auto; padding-top: 8px; font-size: 0.72rem; line-height: 1.35; border-top: 1px dashed var(--line); }
+.have.yes { color: #3D6B5C; }
+.have.yes::before { content: '✓ '; font-weight: 700; }
+.have.no { color: var(--ink-soft); }
+.branch .slot { flex: 0 1 auto; }
+.branch-note { align-self: center; font-size: 0.7rem; color: var(--gold-deep); padding: 0 8px; position: relative; }
+.branch-note::before { content: '↓ '; }
+.dest { all: unset; box-sizing: border-box; cursor: pointer; flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 14px; background: var(--teal); color: #E8EFEF; }
+.dest .slot-k { color: var(--gold); }
+.dest h3 { color: #fff; font-size: 1.05rem; line-height: 1.3; }
+.dest .price { color: var(--gold); white-space: nowrap; }
+.dest p { margin: 0; font-size: 0.78rem; line-height: 1.45; }
+.dest-note { margin-top: auto; padding-top: 10px; font-size: 0.72rem; color: var(--gold); border-top: 1px solid rgba(255,255,255,.15); }
+.fun-foot { margin: 16px 0 0; font-size: 0.75rem; }
+
+.slot-chip { align-self: flex-start; display: inline-block; font-size: 0.66rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--paper); background: var(--teal); padding: 2px 8px; border-radius: 999px; margin-bottom: 4px; }
+.roles-list .where { font-size: 0.7rem; color: var(--gold-deep); }
+.section-head { margin: 34px 0 14px; }
+.section-head h2 { font-size: 1.15rem; color: var(--teal-deep); margin: 0 0 4px; }
+.section-head p { margin: 0; font-size: 0.82rem; color: var(--ink-soft); max-width: 80ch; }
+.fits .chips-row li + li::before { content: none; }
+
+.pick-list { display: grid; gap: 8px; }
+.pick { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 3px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--paper); }
+.pick:hover { border-color: var(--gold-deep); background: var(--gold-wash); }
+.pick b { color: var(--teal-deep); font-size: 0.9rem; }
+.pick span { font-size: 0.78rem; color: var(--ink-soft); }
+.pick small { justify-self: start; margin-top: 4px; }
+
+@media (max-width: 1180px) {
+  .fun-flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .fun-col::after { display: none; }
+}
+@media (max-width: 760px) {
+  .funnel { padding: 16px; }
+  .fun-head { grid-template-columns: 1fr; }
+  .aov { flex-wrap: wrap; }
+  .aov div { flex: 1; min-width: 0; }
+  .fun-flow { grid-template-columns: 1fr; gap: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .slot { transition: none; } .slot:hover { transform: none; } }
+
+/* ---------- Pricing and AOV (v0.5.0) ---------- */
+.aov { flex-wrap: wrap; justify-content: flex-end; }
+.pricing { margin-top: 18px; }
+.pricing h2 { font-size: 1.2rem; color: var(--teal-deep); margin: 2px 0 6px; }
+.pricing h3 { font-size: 0.9rem; color: var(--teal-deep); margin: 20px 0 8px; }
+.pricing .lead { margin: 0; font-size: 0.86rem; color: var(--ink-soft); max-width: 75ch; }
+.goal { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 16px 0 12px; font-size: 0.85rem; font-weight: 600; color: var(--teal-deep); }
+.goal-chip { font: inherit; font-weight: 600; cursor: pointer; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--teal); }
+.goal-chip:hover { border-color: var(--gold-deep); }
+.goal-chip.on { background: var(--teal); border-color: var(--teal); color: #fff; }
+.goal-chip:focus-visible { outline: 3px solid color-mix(in srgb, var(--gold) 70%, transparent); outline-offset: 2px; }
+.est { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.est-card { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--cream); display: grid; gap: 2px; }
+.est-card span { font-size: 0.72rem; color: var(--ink-soft); }
+.est-card b { font-size: 1.3rem; color: var(--teal-deep); font-variant-numeric: tabular-nums; }
+.est-card small { font-size: 0.7rem; color: var(--ink-soft); }
+.est-card.met { background: #E6EFEA; border-color: #A9C4B8; }
+.est-card.met small { color: #3D6B5C; font-weight: 600; }
+.est-card.met small::before { content: '\2713  '; }
+.goal-msg { margin: 12px 0 0; font-size: 0.88rem; color: var(--ink); max-width: 80ch; }
+.ranges { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ranges li { padding: 10px 12px; border-radius: 10px; background: var(--cream); }
+.ranges li.off { opacity: 0.6; }
+.rg-top { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+.rg-top b { font-size: 0.85rem; color: var(--teal-deep); min-width: 8.5em; }
+.rg-top .rg { font-weight: 600; color: var(--gold-deep); font-variant-numeric: tabular-nums; }
+.rg-top .yours { margin-left: auto; font-size: 0.78rem; color: var(--teal); }
+.ranges small { display: block; margin-top: 2px; font-size: 0.74rem; color: var(--ink-soft); }
+.sets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.set { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); }
+.set b { color: var(--teal-deep); }
+.set span { font-size: 0.74rem; color: var(--ink-soft); line-height: 1.5; }
+.set small { font-size: 0.74rem; color: var(--teal); font-weight: 600; }
+.set .btn { align-self: flex-start; margin-top: auto; }
+.pricing > .note { margin-top: 16px; font-size: 0.72rem; }
+@media (max-width: 760px) { .est, .sets { grid-template-columns: 1fr; } .rg-top .yours { margin-left: 0; } }
+.pricing ul.ranges { padding-left: 0; margin-left: 0; }
+</style>
+<div id="app"></div>
+<div id="drawerRoot"></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<script type="module">/**
+ * Digital Product Opportunity Map — data model (schema "opportunity-map/1").
+ *
+ * This is the contract between the AI-guided discovery and the visual map:
+ * the AI must produce this shape, validateMap() checks it before anything renders,
+ * and the customer's edits are saved in the same shape.
+ *
+ * Key distinctions the brief requires:
+ *   assets        what the business ALREADY HAS (customer-stated)
+ *   problems      recurring client needs and friction (customer-stated)
+ *   opportunities SUGGESTED products (AI hypotheses until the customer confirms)
+ *   evidence      each item is a "fact" (the customer said it) or an "assumption" (not yet known)
+ *   role          paid product, free resource, onboarding tool, or included in the service
+ */
+
+const MAP_SCHEMA = 'opportunity-map/2';
+
+/** The five checkout positions of an Authority Funnel. None is required except that a funnel starts with a main product. */
+const SLOTS = Object.freeze({
+  main: { label: 'Main product', when: 'What they buy first, often from an ad', priceHint: 'Usually $0 to $50; often $7 to $29', example: '$27' },
+  bump: { label: 'Order bump', when: 'A small add-on they tick at checkout', priceHint: 'A small add-on price', example: '$17' },
+  upsell: { label: 'Upsell', when: 'Offered right after they buy, in one click', priceHint: 'A bigger next step', example: '$97' },
+  downsell: { label: 'Downsell', when: 'Shown only if they say no to the upsell', priceHint: 'A lighter, lower-priced version of the upsell', example: '$47' },
+  oto: { label: 'One-time offer', when: 'A final offer before they leave the checkout', priceHint: 'The biggest step before your signature offer', example: '$297' },
+});
+const SLOT_ORDER = Object.freeze(['main', 'bump', 'upsell', 'downsell', 'oto']);
+
+const STAGES = Object.freeze([
+  { id: 'before', label: 'Before they buy', hint: 'Finding you, asking questions, deciding' },
+  { id: 'prepare', label: 'Getting started', hint: 'Onboarding, setup or the first order' },
+  { id: 'deliver', label: 'Getting the result', hint: 'Your service, program or product in use' },
+  { id: 'after', label: 'After the result', hint: 'Follow-up, care and what comes next' },
+]);
+
+const ROLES = Object.freeze({
+  paid: { label: 'Digital product', help: 'Useful on its own. Sell it in your Authority Funnel, in your store, or both.' },
+  free: { label: 'Lead magnet', help: 'Give it away to attract the right people. A candidate for your high-value lead magnet.' },
+  onboarding: { label: 'Onboarding tool', help: 'Give it to new signature-offer customers so they start prepared.' },
+  included: { label: 'Keep inside your offer', help: 'Part of what signature-offer customers already get. Saves repeat explanations.' },
+});
+
+const RELATIONS = Object.freeze({
+  prepares: { label: 'Prepares buyers for', short: 'prepares for' },
+  supports: { label: 'Supports customers during', short: 'supports' },
+  leads: { label: 'Can lead naturally to', short: 'can lead to' },
+});
+
+const OFFER_KINDS = Object.freeze({
+  signature: 'Signature offer',
+  premium: 'Premium offer',
+  recurring: 'Recurring offer',
+  other: 'Other offer',
+});
+
+const EVIDENCE_TYPES = Object.freeze({
+  fact: 'You told us',
+  assumption: 'Assumption to check',
+});
+
+const LIMITS = Object.freeze({ opportunities: 8, evidence: 6, why: 6, text: 600, name: 90 });
+
+const str = (v, max = LIMITS.text) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+const ids = (arr) => new Set((arr || []).map((x) => x.id));
+
+/**
+ * Price ranges commonly published for each funnel position (2025–2026 funnel guidance: Systeme.io,
+ * Teachable, CartFlows, LTO Ads). Illustrative ranges to choose from, not rules or benchmarks.
+ */
+const PRICE_RANGES = Object.freeze({
+  main: { low: 7, high: 47, note: 'Most low-ticket funnels start between $7 and $47; $7 to $27 is the most common.' },
+  bump: { low: 7, high: 27, note: 'Usually about 30% to 65% of the main product price.' },
+  upsell: { low: 47, high: 197, note: 'Usually about 2 to 5 times the main product price.' },
+  downsell: { low: 17, high: 97, note: 'Usually about 30% to 70% of the upsell price.' },
+  oto: { low: 97, high: 297, note: 'The biggest step before your signature offer. Fewer sources price this separately, so treat it as a starting point.' },
+});
+
+/** Ready-made price sets the customer can apply with one click. */
+const PRICE_SETS = Object.freeze([
+  { id: 'starter', label: 'Starter', prices: { main: 17, bump: 9, upsell: 47, downsell: 27, oto: 97 } },
+  { id: 'growth', label: 'Growth', prices: { main: 27, bump: 17, upsell: 97, downsell: 47, oto: 197 } },
+  { id: 'premium', label: 'Premium', prices: { main: 47, bump: 27, upsell: 197, downsell: 97, oto: 297 } },
+]);
+
+/**
+ * Share of buyers who say yes to each extra offer. Same illustrative planning assumptions as the
+ * Authority Funnel Revenue Calculator; not verified industry benchmarks or predictions.
+ * The downsell rate applies only to people who declined the upsell.
+ */
+const TAKE_RATES = Object.freeze({
+  conservative: { label: 'Conservative', bump: 0.10, upsell: 0.03, downsell: 0.02, oto: 0.02 },
+  expected: { label: 'Expected', bump: 0.20, upsell: 0.06, downsell: 0.04, oto: 0.05 },
+  stretch: { label: 'Stretch', bump: 0.35, upsell: 0.15, downsell: 0.08, oto: 0.10 },
+});
+const AOV_GOALS = Object.freeze([50, 100, 250, 500]);
+
+/** Estimated average spent per buyer, for one take-rate scenario. `prices` overrides the map's own prices. */
+function estimateAov(map, scenario = 'expected', prices = null) {
+  const f = funnelOf(map);
+  const r = TAKE_RATES[scenario];
+  const p = (k) => (f[k] ? (prices ? prices[k] : priceValue(f[k].price)) : 0);
+  const up = f.upsell ? r.upsell : 0;
+  return p('main') + p('bump') * r.bump + p('upsell') * up + p('downsell') * (1 - up) * r.downsell + p('oto') * r.oto;
+}
+
+/** Funnel helpers shared by the map and the AI checks. */
+function funnelOf(map) {
+  const live = (map.opportunities || []).filter((o) => !o.removed);
+  const bySlot = {};
+  for (const k of SLOT_ORDER) bySlot[k] = live.find((o) => o.slot === k) || null;
+  return bySlot;
+}
+const priceValue = (p) => { const n = parseFloat(String(p || '').replace(/[^0-9.]/g, '')); return Number.isFinite(n) ? n : 0; };
+/** Combined price if one buyer says yes to every offer they can see (upsell OR downsell, never both). Same rule as the revenue calculator. */
+function totalOfferValue(map) {
+  const f = funnelOf(map);
+  const v = (k) => (f[k] ? priceValue(f[k].price) : 0);
+  return v('main') + v('bump') + Math.max(v('upsell'), v('downsell')) + v('oto');
+}
+
+/** An opportunity backed by at least one customer-stated fact, versus pure hypothesis. */
+function evidenceStatus(opp) {
+  const ev = opp.evidence || [];
+  const facts = ev.filter((e) => e.type === 'fact').length;
+  const assumptions = ev.filter((e) => e.type === 'assumption').length;
+  if (facts && assumptions) return { key: 'mixed', label: 'Need you described, demand to test' };
+  if (facts) return { key: 'evidence', label: 'Based on what you told us' };
+  return { key: 'hypothesis', label: 'Hypothesis to test' };
+}
+
+/**
+ * Validate and normalize a map. Returns { ok, errors, map }.
+ * Problems that can be repaired safely (trimming, dropping broken references) are fixed and
+ * reported as warnings; anything that would make the map misleading is an error.
+ */
+function validateMap(input) {
+  const errors = [];
+  const warnings = [];
+  if (!input || typeof input !== 'object') return { ok: false, errors: ['The map is empty.'], warnings, map: null };
+  if (input.schema !== MAP_SCHEMA) errors.push(`Unknown map format "${input.schema}".`);
+
+  const stageIds = new Set(STAGES.map((s) => s.id));
+  const b = input.business || {};
+  const business = {
+    name: str(b.name, LIMITS.name), what: str(b.what), buyer: str(b.buyer), buyerGoal: str(b.buyerGoal),
+    exampleLabel: str(b.exampleLabel, 120),
+  };
+  if (!business.what) errors.push('Say what the business sells.');
+  if (!business.buyer) errors.push('Say who buys from the business.');
+
+  const offers = (input.offers || []).map((o) => ({
+    id: str(o.id, 20), name: str(o.name, LIMITS.name), price: str(o.price, 40),
+    kind: OFFER_KINDS[o.kind] ? o.kind : 'other', description: str(o.description),
+  })).filter((o) => o.id && o.name);
+  if (!offers.length) errors.push('Add at least one existing offer.');
+  if (!offers.some((o) => o.kind === 'signature' || o.kind === 'premium')) warnings.push('No signature or premium offer is marked.');
+  const offerIds = ids(offers);
+
+  const process = {};
+  for (const s of STAGES) process[s.id] = str(input.process?.[s.id]);
+
+  const onStage = (x, what) => {
+    if (!stageIds.has(x.stage)) { warnings.push(`${what} "${x.text || x.name}" had an unknown journey stage and was moved to "Getting started".`); return 'prepare'; }
+    return x.stage;
+  };
+  const assets = (input.assets || []).map((a) => ({ id: str(a.id, 20), name: str(a.name, LIMITS.name), kind: str(a.kind, 40), stage: a.stage, note: str(a.note) }))
+    .filter((a) => a.id && a.name).map((a) => ({ ...a, stage: onStage(a, 'Asset') }));
+  const problems = (input.problems || []).map((p) => ({ id: str(p.id, 20), text: str(p.text), stage: p.stage }))
+    .filter((p) => p.id && p.text).map((p) => ({ ...p, stage: onStage(p, 'Problem') }));
+  const assetIds = ids(assets);
+  const problemIds = ids(problems);
+
+  const opportunities = (input.opportunities || []).slice(0, LIMITS.opportunities).map((o) => {
+    const opp = {
+      id: str(o.id, 20), name: str(o.name, LIMITS.name), format: str(o.format, 160), stage: o.stage,
+      buyer: str(o.buyer), problem: str(o.problem), outcome: str(o.outcome),
+      role: ROLES[o.role] ? o.role : 'paid', roleReason: str(o.roleReason),
+      sources: {
+        assets: (o.sources?.assets || []).filter((id) => assetIds.has(id)),
+        problems: (o.sources?.problems || []).filter((id) => problemIds.has(id)),
+      },
+      connects: (o.connects || []).filter((c) => offerIds.has(c.offer) && RELATIONS[c.relation]).map((c) => ({ offer: c.offer, relation: c.relation })),
+      evidence: (o.evidence || []).slice(0, LIMITS.evidence).map((e) => ({ type: e.type === 'fact' ? 'fact' : 'assumption', text: str(e.text) })).filter((e) => e.text),
+      effort: str(o.effort, 160),
+      slot: SLOTS[o.slot] ? o.slot : '',
+      price: str(o.price, 40),
+      removed: Boolean(o.removed),
+    };
+    if (opp.slot && opp.role !== 'paid') { warnings.push(`"${opp.name}" is in the funnel, so it was marked as a digital product.`); opp.role = 'paid'; }
+    if (!ROLES[o.role]) warnings.push(`"${opp.name}" had no valid role and was set to Paid product.`);
+    opp.stage = onStage(opp, 'Opportunity');
+    if (!opp.evidence.length) opp.evidence.push({ type: 'assumption', text: 'No evidence recorded yet.' });
+    return opp;
+  }).filter((o) => o.id && o.name);
+  if (!opportunities.length) errors.push('The map has no product opportunities.');
+  const taken = new Set();
+  for (const o of opportunities) {
+    if (!o.slot) continue;
+    if (o.removed) { o.slot = ''; continue; }
+    if (taken.has(o.slot)) { warnings.push(`Two ideas were in the ${SLOTS[o.slot].label} position; "${o.name}" was moved out of the funnel.`); o.slot = ''; continue; }
+    taken.add(o.slot);
+  }
+  if (taken.size && !taken.has('main')) warnings.push('The funnel has no main product yet.');
+  if (taken.has('downsell') && !taken.has('upsell')) warnings.push('A downsell is only shown when someone declines an upsell, so add an upsell too.');
+  if ((input.opportunities || []).length > LIMITS.opportunities) warnings.push(`Only the first ${LIMITS.opportunities} opportunities are kept.`);
+
+  const r = input.recommendation || {};
+  const live = opportunities.filter((o) => !o.removed);
+  let recId = live.some((o) => o.id === r.opportunityId) ? r.opportunityId : null;
+  if (!recId && live.length) { recId = live[0].id; warnings.push('The recommended opportunity was missing, so the first one is shown.'); }
+  const recommendation = {
+    opportunityId: recId,
+    why: (r.why || []).map((x) => str(x)).filter(Boolean).slice(0, LIMITS.why),
+    assumptions: (r.assumptions || []).map((x) => str(x)).filter(Boolean).slice(0, LIMITS.why),
+    validationStep: str(r.validationStep, 900),
+    nextStep: str(r.nextStep, 600),
+  };
+  if (!recommendation.validationStep) errors.push('The recommendation needs a first validation step.');
+
+  const map = {
+    schema: MAP_SCHEMA,
+    business, offers, process, assets, problems, opportunities, recommendation,
+    summary: str(input.summary, 1600),
+    goal: AOV_GOALS.includes(Number(input.goal)) ? Number(input.goal) : 100,
+    meta: { createdAt: input.meta?.createdAt || null, editedAt: input.meta?.editedAt || null, source: str(input.meta?.source, 40) || 'ai' },
+  };
+  return { ok: errors.length === 0, errors, warnings, map };
+}
+
+/**
+ * Example map: the website-designer scenario from the knowledge base (section 7).
+ * The business is fictional. "fact" evidence stands for what the owner would have said in the
+ * interview; "assumption" marks what nobody knows yet. Prices are example starting points.
+ */
+const EXAMPLE_MAP = {
+  schema: 'opportunity-map/2',
+  business: {
+    name: 'Northline Web Studio',
+    exampleLabel: 'Example business: a website designer',
+    what: 'Custom websites for coaches, therapists and local service businesses',
+    buyer: 'Service business owners who have outgrown a do-it-yourself website',
+    buyerGoal: 'A professional site that explains their services clearly and brings in inquiries',
+  },
+  offers: [
+    { id: 'o1', kind: 'signature', name: 'Custom Website Build', price: '$3,500', description: 'Six-week design and build, two revision rounds, launch and a handover call.' },
+    { id: 'o2', kind: 'recurring', name: 'Website Care Plan', price: '$150 a month', description: 'Hosting, updates and small edits after launch.' },
+  ],
+  process: {
+    before: 'Inquiry, discovery call, proposal',
+    prepare: 'Deposit, content questionnaire, collecting copy and photos',
+    deliver: 'Design, two revision rounds, approvals',
+    after: 'Launch, editing walkthrough, Care Plan offer',
+  },
+  assets: [
+    { id: 'a1', stage: 'before', kind: 'Template', name: 'Proposal and sitemap template' },
+    { id: 'a2', stage: 'prepare', kind: 'Google Doc', name: 'Content questionnaire' },
+    { id: 'a3', stage: 'prepare', kind: 'Email', name: '"What we need from you" email' },
+    { id: 'a4', stage: 'prepare', kind: 'Canva', name: 'Photo shot list (rough draft)' },
+    { id: 'a5', stage: 'after', kind: 'Checklist', name: 'Internal launch checklist' },
+    { id: 'a6', stage: 'after', kind: 'Recording', name: 'Site-editing walkthrough video' },
+  ],
+  problems: [
+    { id: 'p1', stage: 'before', text: 'Prospects book discovery calls before they know what they need' },
+    { id: 'p2', stage: 'prepare', text: 'Projects stall two to three weeks waiting on copy and photos' },
+    { id: 'p3', stage: 'prepare', text: 'Clients struggle to describe their services and what makes them different' },
+    { id: 'p4', stage: 'prepare', text: '"Do I need professional photos?" comes up on nearly every project' },
+    { id: 'p5', stage: 'deliver', text: 'Approvals drag when feedback comes from several people' },
+    { id: 'p6', stage: 'after', text: 'The same "how do I update my site?" questions after launch' },
+  ],
+  opportunities: [
+    {
+      id: 'op1', slot: 'main', price: '$27', name: 'Website Content Preparation Kit', stage: 'prepare',
+      format: 'Guided kit: content checklist, page-by-page questionnaire and a photo shot list',
+      buyer: 'Service business owners planning a new website, whether or not they have hired a designer',
+      problem: 'They do not know what content a website needs, so projects stall while they gather it.',
+      outcome: 'Every piece of content gathered and ready before design begins.',
+      role: 'paid',
+      roleReason: 'Useful on its own to people who are not ready to hire you yet, and mostly built already.',
+      sources: { assets: ['a2', 'a3', 'a4'], problems: ['p2', 'p4'] },
+      connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said most projects stall two to three weeks waiting on content.' },
+        { type: 'fact', text: 'The questionnaire, the "what we need" email and a shot list already exist.' },
+        { type: 'assumption', text: 'People who are not ready to hire would pay for this on its own.' },
+      ],
+      effort: 'Low: mostly packaging what you already use',
+    },
+    {
+      id: 'op2', slot: 'bump', price: '$17', name: 'Fill-in-the-Blank Page Copy Templates', stage: 'prepare',
+      format: 'Copy templates for the Home, About, Services and Contact pages',
+      buyer: 'Kit buyers who would rather not start their copy from a blank page',
+      problem: 'They have gathered their content but freeze when writing the actual words.',
+      outcome: 'A first draft of the four core pages in an afternoon.',
+      role: 'paid',
+      roleReason: 'A small, obvious add-on to the kit: same buyer, the very next problem.',
+      sources: { assets: ['a2'], problems: ['p3'] },
+      connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said clients struggle to put their services into words.' },
+        { type: 'assumption', text: 'Kit buyers would add templates at checkout.' },
+      ],
+      effort: 'Low to medium: turn your questionnaire prompts into templates',
+    },
+    {
+      id: 'op3', slot: 'upsell', price: '$97', name: 'Brand Messaging Workbook', stage: 'prepare',
+      format: 'Workbook with short exercises and a recorded walkthrough',
+      buyer: 'Owners who cannot yet explain what makes their service different',
+      problem: 'Their website copy sounds like everyone else’s.',
+      outcome: 'A clear message, service descriptions and an About page they are proud of.',
+      role: 'paid',
+      roleReason: 'A deeper version of the same journey, valuable to buyers who want to go further right away.',
+      sources: { assets: [], problems: ['p3'] },
+      connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said clients struggle to describe what makes them different.' },
+        { type: 'assumption', text: 'The problem is painful enough that people would buy a workbook to solve it.' },
+      ],
+      effort: 'Medium: new exercises to write and record',
+    },
+    {
+      id: 'op4', slot: 'downsell', price: '$47', name: 'Service Description Quick-Start', stage: 'prepare',
+      format: 'The services chapter of the workbook on its own',
+      buyer: 'Buyers who say no to the full workbook',
+      problem: 'They still need clear service descriptions but want a smaller step.',
+      outcome: 'Clear, confident descriptions of each service.',
+      role: 'paid',
+      roleReason: 'A lighter version of the upsell for people who decline it.',
+      sources: { assets: [], problems: ['p3'] },
+      connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said service descriptions are the hardest part for clients.' },
+        { type: 'assumption', text: 'People who decline the workbook would take a smaller version.' },
+      ],
+      effort: 'Low once the workbook exists',
+    },
+    {
+      id: 'op5', slot: 'oto', price: '$197', name: 'Website Project Planner', stage: 'before',
+      format: 'Sitemap, timeline and budget planner with a recorded walkthrough',
+      buyer: 'Owners getting serious about a new website this year',
+      problem: 'They do not know what their site needs, what it costs or how long it takes.',
+      outcome: 'A complete website plan, ready to hand to a designer or to build themselves.',
+      role: 'paid',
+      roleReason: 'The closest step to your build: buyers who finish it are ready for a real project conversation.',
+      sources: { assets: ['a1'], problems: ['p1'] },
+      connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said prospects book calls before they know what they need.' },
+        { type: 'fact', text: 'Your proposal and sitemap template already exists.' },
+        { type: 'assumption', text: 'Buyers would pay more for planning before hiring a designer.' },
+      ],
+      effort: 'Medium: adapt your template and record a walkthrough',
+    },
+    {
+      id: 'op6', slot: '', price: '', name: 'Website Launch Checklist', stage: 'before',
+      format: 'One-page checklist', buyer: 'Owners about to launch or relaunch a website',
+      problem: 'They launch with broken links, missing pages or no contact form.',
+      outcome: 'A launch with no avoidable mistakes.',
+      role: 'free',
+      roleReason: 'Short and easy to share, so it works best as a free resource that attracts the right buyers.',
+      sources: { assets: ['a5'], problems: [] },
+      connects: [{ offer: 'o1', relation: 'leads' }],
+      evidence: [
+        { type: 'fact', text: 'Your internal launch checklist already exists.' },
+        { type: 'assumption', text: 'People looking for launch help are good-fit buyers.' },
+      ],
+      effort: 'Low',
+    },
+    {
+      id: 'op7', slot: '', price: '', name: 'Feedback and Approval Guide', stage: 'deliver',
+      format: 'Short guide with a feedback template', buyer: 'New clients entering revision rounds',
+      problem: 'Feedback arrives scattered across several people and messages.',
+      outcome: 'One consolidated round of feedback per revision.',
+      role: 'onboarding',
+      roleReason: 'Only useful once someone is a client, so give it at kickoff.',
+      sources: { assets: [], problems: ['p5'] },
+      connects: [{ offer: 'o1', relation: 'supports' }],
+      evidence: [
+        { type: 'fact', text: 'You said approvals drag when feedback comes from several people.' },
+        { type: 'assumption', text: 'A short guide at kickoff changes how clients give feedback.' },
+      ],
+      effort: 'Low',
+    },
+    {
+      id: 'op8', slot: '', price: '', name: 'Edit-Your-Website Video Guide', stage: 'after',
+      format: 'Short how-to videos', buyer: 'New clients after launch',
+      problem: 'They are unsure how to make small updates and ask the same questions.',
+      outcome: 'Confident making small text and photo changes on their own.',
+      role: 'included',
+      roleReason: 'It answers questions you already handle, so include it with every build.',
+      sources: { assets: ['a6'], problems: ['p6'] },
+      connects: [{ offer: 'o2', relation: 'leads' }],
+      evidence: [
+        { type: 'fact', text: 'A walkthrough recording already exists.' },
+        { type: 'assumption', text: 'Clients who would rather not edit themselves are natural Care Plan buyers.' },
+      ],
+      effort: 'Low: split the existing recording into short clips',
+    },
+  ],
+  recommendation: {
+    opportunityId: 'op1',
+    why: [
+      'It solves the problem you described most: projects stalling while you wait on content.',
+      'Most of it already exists: your questionnaire, the "what we need" email and the photo shot list.',
+      'Every other product in the funnel builds on it, so it makes a natural front door.',
+      'Buyers who finish it arrive ready for your Custom Website Build.',
+      'It may reduce the time you spend chasing content. That is a possible benefit, not a promise.',
+    ],
+    assumptions: ['People who are not ready to hire would pay for the kit on its own.'],
+    validationStep: 'Send the kit’s outline to five recent inquiries who were not ready to start. Ask whether it would have helped them and whether they would have paid for it. Write down what they say before building anything new.',
+    nextStep: 'When you are ready to build, the $47 Low-Ticket Authority Funnel course walks through creating and connecting these products.',
+  },
+  summary: 'Most of your Authority Funnel is already sitting in your files. Your content questionnaire, the "what we need" email and your shot list become a Website Content Preparation Kit, your main product. Page copy templates make a natural order bump, a Brand Messaging Workbook a deeper upsell with a lighter version as the downsell, and a Website Project Planner a final offer that brings buyers right to the door of your $3,500 build. Your launch checklist can be a lead magnet, and your feedback guide and editing videos work best inside your service.',
+  meta: { createdAt: '2026-10-14', source: 'example' },
+};
+
+/**
+ * Example maps for review: one per kind of established business the app serves.
+ * All businesses are fictional. "fact" evidence stands for what the owner would have said
+ * in the interview; "assumption" marks what nobody knows yet. Prices are example starting points.
+ */
+
+const opp = (o) => ({ slot: '', price: '', effort: 'Low', ...o });
+
+const MEAL_PLANNING_COACH = {
+  schema: 'opportunity-map/2',
+  business: {
+    name: 'Simmer & Plan',
+    exampleLabel: 'Example business: a meal-planning coach',
+    what: 'A 12-week coaching program that helps busy families plan and cook weeknight dinners',
+    buyer: 'Working parents of school-age children who rely on takeout more than they want to',
+    buyerGoal: 'Calm, home-cooked weeknight dinners without deciding what to make every evening',
+  },
+  offers: [
+    { id: 'o1', kind: 'signature', name: 'Family Table Reset', price: '$1,200', description: 'Twelve weeks of coaching calls, personalized meal plans and grocery lists.' },
+    { id: 'o2', kind: 'recurring', name: 'Dinner Plan Membership', price: '$29 a month', description: 'New weekly plans and grocery lists after the program ends.' },
+  ],
+  process: {
+    before: 'Free consult call, intake form',
+    prepare: 'Pantry check, family food preferences questionnaire',
+    deliver: 'Weekly calls, weekly plans and grocery lists, Sunday prep',
+    after: 'Graduation call, membership invitation',
+  },
+  assets: [
+    { id: 'a1', stage: 'before', kind: 'Form', name: 'Intake form' },
+    { id: 'a2', stage: 'prepare', kind: 'Google Doc', name: 'Pantry staples list' },
+    { id: 'a3', stage: 'prepare', kind: 'Questionnaire', name: 'Family food preferences questionnaire' },
+    { id: 'a4', stage: 'deliver', kind: 'Canva', name: 'Sunday prep routine handout' },
+    { id: 'a5', stage: 'deliver', kind: 'Collection', name: 'Bank of 80 tested family recipes' },
+    { id: 'a6', stage: 'after', kind: 'Cheat sheet', name: 'Leftover makeover cheat sheet' },
+  ],
+  problems: [
+    { id: 'p1', stage: 'before', text: 'Prospects ask whether this is just recipes they could find for free' },
+    { id: 'p2', stage: 'prepare', text: 'Clients do not know what is already in their pantry and buy duplicates' },
+    { id: 'p3', stage: 'prepare', text: 'Picky eaters derail the plan in the first week' },
+    { id: 'p4', stage: 'deliver', text: 'Sunday prep takes new clients three hours or more at first' },
+    { id: 'p5', stage: 'deliver', text: 'The same "what can I swap for this?" questions every week' },
+    { id: 'p6', stage: 'after', text: 'Momentum slips once the weekly calls end' },
+  ],
+  opportunities: [
+    opp({
+      id: 'op1', slot: 'main', price: '$27', name: 'Two-Week Family Dinner Starter Plan', stage: 'before',
+      format: 'Two weeks of dinner plans, grocery lists and the Sunday prep routine',
+      buyer: 'Busy parents who want to try planning before committing to coaching',
+      problem: 'They doubt a plan will work for their family, and free recipes have not helped.',
+      outcome: 'Two weeks of planned weeknight dinners and a first taste of the Sunday routine.',
+      role: 'paid', roleReason: 'Gives a real result on its own and shows the difference between a system and a pile of recipes.',
+      sources: { assets: ['a4', 'a5'], problems: ['p1'] }, connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said prospects ask whether this is just free recipes.' },
+        { type: 'fact', text: 'Your recipe bank and prep routine already exist and are tested.' },
+        { type: 'assumption', text: 'Parents who try two weeks would want more help.' },
+      ],
+      effort: 'Low: choose recipes and format what you already use',
+    }),
+    opp({
+      id: 'op2', slot: 'bump', price: '$17', name: 'Picky Eater Swap Guide', stage: 'prepare',
+      format: 'Swap charts for common family dinners',
+      buyer: 'Starter Plan buyers cooking for children with strong preferences',
+      problem: 'One refusal at the table derails the whole week of plans.',
+      outcome: 'Simple swaps that keep one meal working for the whole family.',
+      role: 'paid', roleReason: 'The first thing that goes wrong with a new plan, so it pairs naturally at checkout.',
+      sources: { assets: [], problems: ['p3', 'p5'] }, connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said picky eaters derail plans in the first week.' },
+        { type: 'fact', text: 'You answer swap questions every week.' },
+        { type: 'assumption', text: 'Buyers would add it at checkout.' },
+      ],
+      effort: 'Medium: write down the swaps you already give',
+    }),
+    opp({
+      id: 'op3', slot: 'upsell', price: '$97', name: 'Sunday Prep Video Course', stage: 'deliver',
+      format: 'Short videos plus four more weeks of plans',
+      buyer: 'Buyers who liked the starter plan and want the routine to stick',
+      problem: 'Prep takes hours at first, so new routines are abandoned.',
+      outcome: 'A 90-minute Sunday routine that covers the whole week.',
+      role: 'paid', roleReason: 'The next step after the starter plan, and the core skill of your program.',
+      sources: { assets: ['a4', 'a5'], problems: ['p4'] }, connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said Sunday prep takes new clients three hours or more.' },
+        { type: 'assumption', text: 'People would learn the routine from video without coaching.' },
+      ],
+      effort: 'Medium: record the routine you already teach',
+    }),
+    opp({
+      id: 'op4', slot: 'downsell', price: '$47', name: 'Four More Weeks of Dinner Plans', stage: 'deliver',
+      format: 'Printable plans and grocery lists, no videos',
+      buyer: 'Buyers who say no to the video course',
+      problem: 'They want to keep going but not pay for the full course.',
+      outcome: 'A month of dinners planned.',
+      role: 'paid', roleReason: 'A lighter version of the upsell for people who decline it.',
+      sources: { assets: ['a5'], problems: [] }, connects: [{ offer: 'o2', relation: 'leads' }],
+      evidence: [
+        { type: 'fact', text: 'Your recipe bank already holds enough for a month of plans.' },
+        { type: 'assumption', text: 'People who decline the course would take the plans alone.' },
+      ],
+    }),
+    opp({
+      id: 'op5', name: 'Pantry Reset Checklist', stage: 'before', format: 'One-page checklist',
+      buyer: 'Families who feel their kitchen is disorganized',
+      problem: 'They buy duplicates and still have "nothing to eat".',
+      outcome: 'A stocked, sorted pantry that supports easy dinners.',
+      role: 'free', roleReason: 'Short and easy to share, so it works best to attract the right families.',
+      sources: { assets: ['a2'], problems: ['p2'] }, connects: [{ offer: 'o1', relation: 'leads' }],
+      evidence: [
+        { type: 'fact', text: 'Your pantry staples list already exists.' },
+        { type: 'assumption', text: 'People who download it are good-fit buyers.' },
+      ],
+    }),
+    opp({
+      id: 'op6', name: 'Family Preferences Kickoff Kit', stage: 'prepare', format: 'Questionnaire and a "dinner rules" page',
+      buyer: 'New coaching clients in their first week',
+      problem: 'The first plan misses because preferences were not gathered.',
+      outcome: 'A first meal plan the whole family will eat.',
+      role: 'onboarding', roleReason: 'Only useful once someone has joined, so give it at kickoff.',
+      sources: { assets: ['a3'], problems: ['p3'] }, connects: [{ offer: 'o1', relation: 'supports' }],
+      evidence: [
+        { type: 'fact', text: 'Your preferences questionnaire already exists.' },
+        { type: 'assumption', text: 'A fuller kit would reduce first-week changes.' },
+      ],
+    }),
+    opp({
+      id: 'op7', name: 'Leftover Makeover Cards', stage: 'after', format: 'Printable recipe cards',
+      buyer: 'Clients finishing the program', problem: 'Habits slip without weekly accountability.',
+      outcome: 'Easy ideas that keep home cooking going.',
+      role: 'included', roleReason: 'A thank-you that keeps graduates cooking and opens the membership conversation.',
+      sources: { assets: ['a6'], problems: ['p6'] }, connects: [{ offer: 'o2', relation: 'leads' }],
+      evidence: [
+        { type: 'fact', text: 'You said momentum slips after the program.' },
+        { type: 'assumption', text: 'Graduates who use the cards are more likely to join the membership.' },
+      ],
+    }),
+  ],
+  recommendation: {
+    opportunityId: 'op1',
+    why: [
+      'It answers the doubt prospects raise most: whether this is more than free recipes.',
+      'It is built almost entirely from material you already use and have tested.',
+      'Buyers get a real result in two weeks, which opens the door to your coaching.',
+    ],
+    assumptions: ['Parents who try two weeks would want more help.'],
+    validationStep: 'Offer the two-week plan to five past consult-call leads who did not join. Ask whether they would use it and what they would pay, and write down their answers before polishing anything.',
+    nextStep: 'When you are ready to build, the $47 Low-Ticket Authority Funnel course walks through creating and connecting these products.',
+  },
+  summary: 'Your funnel starts with a taste of your method: a Two-Week Family Dinner Starter Plan built from recipes and a prep routine you already use. A Picky Eater Swap Guide fits at checkout, a Sunday Prep Video Course is the deeper next step, and four more weeks of plans catch anyone who declines it. You do not need a one-time offer yet. Your pantry checklist can be a lead magnet, and your kickoff kit and leftover cards belong inside your program.',
+  meta: { createdAt: '2026-10-14', source: 'example' },
+};
+
+const HANDMADE_GOODS = {
+  schema: 'opportunity-map/2',
+  business: {
+    name: 'Bramble & Bias Quilt Co.',
+    exampleLabel: 'Example business: a handmade-goods maker who also teaches',
+    what: 'Custom memory quilts made from customers’ clothing, plus beginner quilting workshops',
+    buyer: 'People who want to keep a loved one’s or a child’s clothing as a keepsake',
+    buyerGoal: 'A lasting keepsake they are proud to use or give',
+  },
+  offers: [
+    { id: 'o1', kind: 'signature', name: 'Custom Memory Quilt', price: '$650', description: 'A made-to-order quilt from 16 to 30 garments, about eight weeks.' },
+    { id: 'o2', kind: 'other', name: 'Beginner Quilting Workshop', price: '$95 a seat', description: 'A one-day, in-person class making a small quilt.' },
+  ],
+  process: {
+    before: 'Instagram and website inquiries, quote',
+    prepare: 'Deposit, customer mails garments, layout approval',
+    deliver: 'Cutting and sewing, progress photos',
+    after: 'Shipping, care card, workshop invitation',
+  },
+  assets: [
+    { id: 'a1', stage: 'prepare', kind: 'Email', name: 'Garment selection email' },
+    { id: 'a2', stage: 'prepare', kind: 'Canva', name: 'Layout mockup template' },
+    { id: 'a3', stage: 'deliver', kind: 'Photos', name: 'Progress photo series' },
+    { id: 'a4', stage: 'after', kind: 'Card', name: 'Washing and care card' },
+    { id: 'a5', stage: 'after', kind: 'Pattern', name: 'Workshop beginner pattern' },
+  ],
+  problems: [
+    { id: 'p1', stage: 'before', text: 'Inquirers do not know how many garments a quilt needs' },
+    { id: 'p2', stage: 'before', text: 'People often ask, "Can you teach me to make one myself?"' },
+    { id: 'p3', stage: 'prepare', text: 'Customers send stretchy or worn fabric that will not hold up' },
+    { id: 'p4', stage: 'prepare', text: 'Customers hesitate to approve a layout they cannot picture' },
+    { id: 'p5', stage: 'after', text: 'The same "how do I wash it?" questions after delivery' },
+    { id: 'p6', stage: 'after', text: 'Workshop students ask to buy the pattern to keep practicing' },
+  ],
+  opportunities: [
+    opp({
+      id: 'op1', slot: 'main', price: '$27', name: 'Beginner Memory Quilt Pattern and Video Pack', stage: 'before',
+      format: 'Printable pattern, cutting guide and short how-to videos',
+      buyer: 'Home sewers who want to make a memory quilt themselves',
+      problem: 'They want to make their own keepsake but do not know where to start.',
+      outcome: 'A finished small memory quilt made from their own garments.',
+      role: 'paid', roleReason: 'People already ask for it, and it serves buyers who will never order a custom quilt.',
+      sources: { assets: ['a5'], problems: ['p2', 'p6'] },
+      connects: [{ offer: 'o2', relation: 'leads' }, { offer: 'o1', relation: 'leads' }],
+      evidence: [
+        { type: 'fact', text: 'You said people often ask you to teach them.' },
+        { type: 'fact', text: 'Workshop students ask to buy the pattern.' },
+        { type: 'assumption', text: 'Online buyers would pay for it without the in-person class.' },
+      ],
+      effort: 'Medium: pattern exists, videos need recording',
+    }),
+    opp({
+      id: 'op2', slot: 'bump', price: '$12', name: 'Garment Prep and Stabilizing Guide', stage: 'prepare',
+      format: 'Illustrated guide with fabric dos and don’ts',
+      buyer: 'Pattern buyers working with T-shirts and knit fabric',
+      problem: 'Stretchy or worn fabric warps and ruins the quilt.',
+      outcome: 'Garments prepared so the quilt lies flat and lasts.',
+      role: 'paid', roleReason: 'The first mistake beginners make, so it belongs right at checkout.',
+      sources: { assets: ['a1'], problems: ['p3'] }, connects: [{ offer: 'o2', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said customers send stretchy or worn fabric.' },
+        { type: 'fact', text: 'Your garment selection email already explains it.' },
+        { type: 'assumption', text: 'Buyers would add it at checkout.' },
+      ],
+    }),
+    opp({
+      id: 'op3', slot: 'upsell', price: '$37', name: 'Memory Quilt Layout Planner', stage: 'prepare',
+      format: 'Editable Canva layout templates for 12 to 30 garments',
+      buyer: 'Pattern buyers ready to plan a full-size quilt',
+      problem: 'They cannot picture how their garments will fit together.',
+      outcome: 'A finished layout they are confident about before cutting.',
+      role: 'paid', roleReason: 'Takes buyers from a small first quilt to a full keepsake, and some will decide to order one instead.',
+      sources: { assets: ['a2'], problems: ['p4'] }, connects: [{ offer: 'o1', relation: 'leads' }],
+      evidence: [
+        { type: 'fact', text: 'Your layout mockup template already exists in Canva.' },
+        { type: 'assumption', text: 'Home sewers would pay for planning templates.' },
+      ],
+      effort: 'Low: duplicate and label your existing template',
+    }),
+    opp({
+      id: 'op4', name: 'How Many Garments? Quilt Planner', stage: 'before', format: 'One-page planner',
+      buyer: 'People considering a memory quilt', problem: 'They cannot tell what size quilt their garments will make.',
+      outcome: 'A clear idea of quilt size before asking for a quote.',
+      role: 'free', roleReason: 'Answers every inquirer’s first question and attracts the right buyers.',
+      sources: { assets: [], problems: ['p1'] }, connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said inquirers do not know how many garments they need.' },
+        { type: 'assumption', text: 'A planner would bring more prepared inquiries.' },
+      ],
+    }),
+    opp({
+      id: 'op5', name: 'Keepsake Care Card', stage: 'after', format: 'Printed card in the box',
+      buyer: 'Customers receiving their quilt', problem: 'They worry about washing something irreplaceable.',
+      outcome: 'Confidence using and caring for the quilt.',
+      role: 'included', roleReason: 'Part of a finished product, not something to charge for.',
+      sources: { assets: ['a4'], problems: ['p5'] }, connects: [{ offer: 'o2', relation: 'leads' }],
+      evidence: [
+        { type: 'fact', text: 'Your care card exists and the same questions keep coming.' },
+        { type: 'assumption', text: 'A workshop invitation on the card would bring sign-ups.' },
+      ],
+    }),
+  ],
+  recommendation: {
+    opportunityId: 'op1',
+    why: [
+      'People already ask for it, in messages and in your workshops.',
+      'The pattern exists and has been tested with real beginners.',
+      'It reaches people who will never order a $650 quilt, and some will go on to your workshops or a custom order.',
+    ],
+    assumptions: ['Online buyers would pay for it without the in-person class.'],
+    validationStep: 'Reply to the next five "can you teach me?" messages with a short description of the pack and a price you are considering. Ask whether they would buy it, and note every answer before recording any videos.',
+    nextStep: 'When you are ready to build, the $47 Low-Ticket Authority Funnel course walks through creating and connecting these products.',
+  },
+  summary: 'You do not need all five positions to start. Three products built from what you already have make a complete funnel: a pattern-and-video pack people already ask for, a garment prep guide at checkout, and a layout planner as the next step. Each one moves a home sewer closer to a full keepsake, and to your workshops or a custom quilt. A free garment planner can attract the right people, and your care card belongs in the box.',
+  meta: { createdAt: '2026-10-14', source: 'example' },
+};
+
+const HR_CONSULTANT = {
+  schema: 'opportunity-map/2',
+  business: {
+    name: 'Clearwater HR Advisors',
+    exampleLabel: 'Example business: a consultant',
+    what: 'HR setup and support for small businesses with 10 to 50 employees',
+    buyer: 'Owners of growing small businesses without an HR person',
+    buyerGoal: 'Clear hiring, policies and manager practices without hiring a full-time HR team',
+  },
+  offers: [
+    { id: 'o1', kind: 'signature', name: 'HR Foundations Engagement', price: '$4,800', description: 'Handbook, core policies, hiring process and manager training, over eight weeks.' },
+    { id: 'o2', kind: 'recurring', name: 'Fractional HR Retainer', price: '$900 a month', description: 'Ongoing advice and support after the foundations are in place.' },
+  ],
+  process: {
+    before: 'Discovery call, HR checklist review',
+    prepare: 'Document request, leadership interview',
+    deliver: 'Handbook drafting, policy meetings, manager training',
+    after: 'Rollout to staff, retainer offer',
+  },
+  assets: [
+    { id: 'a1', stage: 'before', kind: 'Checklist', name: 'HR self-assessment checklist' },
+    { id: 'a2', stage: 'prepare', kind: 'List', name: 'Document request list' },
+    { id: 'a3', stage: 'deliver', kind: 'Google Doc', name: 'Job description template' },
+    { id: 'a4', stage: 'deliver', kind: 'Template', name: 'Interview scorecard and question bank' },
+    { id: 'a5', stage: 'deliver', kind: 'Slides', name: 'Manager training slides' },
+    { id: 'a6', stage: 'after', kind: 'Checklist', name: 'New-hire first-week checklist' },
+  ],
+  problems: [
+    { id: 'p1', stage: 'before', text: 'Owners do not know which HR basics they are missing' },
+    { id: 'p2', stage: 'prepare', text: 'Gathering documents takes clients several weeks' },
+    { id: 'p3', stage: 'deliver', text: 'Managers hire on gut feel and interview inconsistently' },
+    { id: 'p4', stage: 'deliver', text: 'Managers avoid difficult conversations until problems grow' },
+    { id: 'p5', stage: 'after', text: 'New hires’ first week is improvised' },
+  ],
+  opportunities: [
+    opp({
+      id: 'op1', slot: 'main', price: '$27', name: 'Small Business Hiring Toolkit', stage: 'deliver',
+      format: 'Job description templates, an interview scorecard and a short guide',
+      buyer: 'Owners and managers about to make their next hire',
+      problem: 'Hiring decisions rest on gut feel and inconsistent interviews.',
+      outcome: 'A consistent, repeatable way to describe roles and compare candidates.',
+      role: 'paid', roleReason: 'Useful to any business that is hiring, and built from templates you already use.',
+      sources: { assets: ['a3', 'a4'], problems: ['p3'] }, connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said managers hire on gut feel and interview inconsistently.' },
+        { type: 'fact', text: 'Your job description template and scorecard already exist.' },
+        { type: 'assumption', text: 'Owners would buy hiring tools before they buy a full engagement.' },
+      ],
+      effort: 'Low: package and explain your existing templates',
+    }),
+    opp({
+      id: 'op2', slot: 'bump', price: '$17', name: 'First-Week Onboarding Plan', stage: 'after',
+      format: 'Day-by-day plan template',
+      buyer: 'Toolkit buyers about to welcome a new hire',
+      problem: 'A good hire’s first week is improvised.',
+      outcome: 'A planned, welcoming first week for every new hire.',
+      role: 'paid', roleReason: 'The very next problem after hiring, so it pairs naturally at checkout.',
+      sources: { assets: ['a6'], problems: ['p5'] }, connects: [{ offer: 'o2', relation: 'leads' }],
+      evidence: [
+        { type: 'fact', text: 'Your first-week checklist already exists.' },
+        { type: 'assumption', text: 'Buyers would add it at checkout.' },
+      ],
+    }),
+    opp({
+      id: 'op3', slot: 'upsell', price: '$97', name: 'Difficult Conversations Course for Managers', stage: 'deliver',
+      format: 'Short video course with conversation plans and practice scripts',
+      buyer: 'Owners whose managers avoid hard conversations',
+      problem: 'Small problems grow because nobody addresses them early.',
+      outcome: 'Managers with a plan and the words to start the conversation.',
+      role: 'paid', roleReason: 'A bigger next step you already teach live; it needs adapting for self-study.',
+      sources: { assets: ['a5'], problems: ['p4'] }, connects: [{ offer: 'o1', relation: 'prepares' }, { offer: 'o2', relation: 'leads' }],
+      evidence: [
+        { type: 'fact', text: 'You said managers avoid difficult conversations.' },
+        { type: 'assumption', text: 'Managers would work through it without a live trainer.' },
+      ],
+      effort: 'Medium to high: adapt slides and record',
+    }),
+    opp({
+      id: 'op4', slot: 'downsell', price: '$47', name: 'Conversation Script Pack', stage: 'deliver',
+      format: 'The course’s scripts and planning sheets, no videos',
+      buyer: 'Buyers who say no to the course',
+      problem: 'They still need help with the next hard conversation.',
+      outcome: 'Ready-to-adapt scripts for the most common situations.',
+      role: 'paid', roleReason: 'A lighter version of the upsell for people who decline it.',
+      sources: { assets: ['a5'], problems: ['p4'] }, connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [{ type: 'assumption', text: 'People who decline the course would take the scripts alone.' }],
+    }),
+    opp({
+      id: 'op5', slot: 'oto', price: '$197', name: 'Employee Handbook Starter Template', stage: 'before',
+      format: 'Editable handbook template with plain-language notes',
+      buyer: 'Owners who know they need a handbook but have not started',
+      problem: 'They do not know what their handbook should cover.',
+      outcome: 'A complete first draft to review with a qualified professional.',
+      role: 'paid', roleReason: 'The closest step to your engagement: buyers see how much a proper HR foundation involves.',
+      sources: { assets: ['a1'], problems: ['p1'] }, connects: [{ offer: 'o1', relation: 'prepares' }],
+      evidence: [
+        { type: 'fact', text: 'You said owners do not know which HR basics they are missing.' },
+        { type: 'assumption', text: 'Owners would buy a template rather than start from scratch or hire you straight away.' },
+      ],
+      effort: 'Medium: generalize your handbook outline',
+    }),
+    opp({
+      id: 'op6', name: 'HR Essentials Self-Audit', stage: 'before', format: 'Checklist with plain-language explanations',
+      buyer: 'Owners unsure whether their HR basics are in place',
+      problem: 'They do not know what they are missing until something goes wrong.',
+      outcome: 'A clear list of what is in place and what needs attention.',
+      role: 'free', roleReason: 'Shows your expertise and starts the conversation about your engagement.',
+      sources: { assets: ['a1'], problems: ['p1'] }, connects: [{ offer: 'o1', relation: 'leads' }],
+      evidence: [
+        { type: 'fact', text: 'Your self-assessment checklist exists and you use it on discovery calls.' },
+        { type: 'assumption', text: 'Owners who complete it are good-fit clients.' },
+      ],
+    }),
+    opp({
+      id: 'op7', name: 'Document Gathering Checklist', stage: 'prepare', format: 'Checklist with where-to-find-it notes',
+      buyer: 'New engagement clients', problem: 'Collecting documents delays the start by weeks.',
+      outcome: 'Everything gathered in the first week.',
+      role: 'onboarding', roleReason: 'Only useful to clients starting work with you.',
+      sources: { assets: ['a2'], problems: ['p2'] }, connects: [{ offer: 'o1', relation: 'supports' }],
+      evidence: [
+        { type: 'fact', text: 'You said gathering documents takes several weeks.' },
+        { type: 'assumption', text: 'Clearer instructions would speed it up.' },
+      ],
+    }),
+  ],
+  recommendation: {
+    opportunityId: 'op1',
+    why: [
+      'It solves a problem you see in nearly every client: inconsistent hiring.',
+      'The templates already exist and are proven in your engagements.',
+      'Any business that is hiring can use it, long before they are ready for a $4,800 engagement.',
+    ],
+    assumptions: ['Owners would buy hiring tools before they buy a full engagement.'],
+    validationStep: 'Show the toolkit outline to five owners from past discovery calls who did not go ahead. Ask whether they are hiring soon, whether it would help, and whether they would pay for it. Record their answers before building more.',
+    nextStep: 'When you are ready to build, the $47 Low-Ticket Authority Funnel course walks through creating and connecting these products.',
+  },
+  summary: 'All five positions of your funnel can come from work you already do. Your hiring templates become the main product, your first-week checklist a natural order bump, and your manager training a Difficult Conversations course, with a script pack for anyone who declines it. A handbook starter template is the final offer that brings owners closest to your HR Foundations Engagement. Your self-audit can be a lead magnet, and your document checklist belongs inside the engagement.',
+  meta: { createdAt: '2026-10-14', source: 'example' },
+};
+
+const EXAMPLES = [
+  { id: 'web', label: 'Website designer (service)', map: EXAMPLE_MAP },
+  { id: 'meal', label: 'Meal-planning coach (coaching)', map: MEAL_PLANNING_COACH },
+  { id: 'quilt', label: 'Quilt maker (handmade products and classes)', map: HANDMADE_GOODS },
+  { id: 'hr', label: 'HR consultant (consulting)', map: HR_CONSULTANT },
+];
+
+/**
+ * Digital Product Opportunity Map — screen view and editing.
+ * Renders any valid "opportunity-map/1" object. Edits save in the browser.
+ */
+
+
+const STORE = 'pig-authority-funnel-map-prototype-v2';
+const $ = (sel, root = document) => root.querySelector(sel);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clone = (x) => JSON.parse(JSON.stringify(x));
+
+const CURRENT = `${STORE}:current`;
+let exampleId = (() => { try { const id = localStorage.getItem(CURRENT); return EXAMPLES.some((x) => x.id === id) ? id : EXAMPLES[0].id; } catch { return EXAMPLES[0].id; } })();
+const storeKey = () => `${STORE}:${exampleId}`;
+const exampleMap = () => validateMap(clone(EXAMPLES.find((x) => x.id === exampleId).map)).map;
+let map = loadMap();
+let open = null; // { type: 'opp' | 'offer' | 'rec' | 'summary', id, returnTo }
+let confirmRemove = false;
+let resetArmed = null;
+let undo = null;
+
+function loadMap() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storeKey()) || 'null');
+    if (saved) {
+      const r = validateMap(saved);
+      if (r.ok) return r.map;
+    }
+  } catch { /* storage unavailable or damaged: fall back to the example */ }
+  return exampleMap();
+}
+
+function switchExample(id) {
+  if (!EXAMPLES.some((x) => x.id === id) || id === exampleId) return;
+  exampleId = id;
+  try { localStorage.setItem(CURRENT, id); } catch { /* ignore */ }
+  map = loadMap(); open = null; undo = null;
+  rerender();
+  window.scrollTo({ top: 0 });
+}
+
+let savedTimer;
+function save() {
+  map.meta.editedAt = new Date().toISOString();
+  map.meta.source = map.meta.source === 'example' ? 'example-edited' : map.meta.source;
+  clearTimeout(savedTimer);
+  let msg = 'Saved on this device';
+  try { localStorage.setItem(storeKey(), JSON.stringify(map)); } catch { msg = 'This browser is not saving changes'; }
+  const el = $('#saved');
+  if (el) { el.textContent = 'Saving…'; savedTimer = setTimeout(() => { el.textContent = msg; }, 350); }
+}
+
+/* ---------- Lookups ---------- */
+const live = () => map.opportunities.filter((o) => !o.removed);
+const oppById = (id) => map.opportunities.find((o) => o.id === id);
+const offerById = (id) => map.offers.find((o) => o.id === id);
+const assetById = (id) => map.assets.find((a) => a.id === id);
+const problemById = (id) => map.problems.find((p) => p.id === id);
+const isFirst = (o) => map.recommendation.opportunityId === o.id;
+const nextId = (prefix, list) => {
+  let n = list.length + 1;
+  while (list.some((x) => x.id === `${prefix}${n}`)) n++;
+  return `${prefix}${n}`;
+};
+
+function sourceNames(o) {
+  return [...o.sources.assets.map((id) => assetById(id)?.name), ...o.sources.problems.map((id) => problemById(id)?.text)].filter(Boolean);
+}
+function shortList(names, n = 2) {
+  if (!names.length) return '';
+  const head = names.slice(0, n).join('; ');
+  return names.length > n ? `${head} + ${names.length - n} more` : head;
+}
+
+/* ---------- Rendering ---------- */
+function oppCard(o) {
+  const st = evidenceStatus(o);
+  const src = sourceNames(o);
+  const conns = o.connects.map((c) => `${RELATIONS[c.relation].label} <b>${esc(offerById(c.offer)?.name)}</b>`);
+  return `<button type="button" class="opp ${isFirst(o) ? 'first' : ''}" data-opp="${esc(o.id)}" data-src="${esc([...o.sources.assets, ...o.sources.problems].join(' '))}" data-offers="${esc(o.connects.map((c) => c.offer).join(' '))}" aria-label="${esc(o.name)}: view and edit">
+    ${isFirst(o) ? '<span class="ribbon">Test this first</span>' : ''}
+    ${o.slot ? `<span class="slot-chip">${SLOTS[o.slot].label}${o.price ? ` · ${esc(o.price)}` : ''}</span>` : ''}
+    <h3>${esc(o.name)}</h3>
+    <p class="outcome">${esc(o.outcome)}</p>
+    <span class="chips"><span class="role ${o.role}">${ROLES[o.role].label}</span><span class="status ${st.key}">${st.label}</span></span>
+    <span class="meta">
+      ${o.buyer ? `<span><b>For:</b> ${esc(o.buyer)}</span>` : ''}
+      ${o.problem ? `<span><b>Problem:</b> ${esc(o.problem)}</span>` : ''}
+      ${src.length ? `<span><b>Built from:</b> ${esc(shortList(src))}</span>` : '<span><b>Built from:</b> new material</span>'}
+      ${conns.map((c) => `<span>${c}</span>`).join('')}
+    </span>
+    <span class="open">View and edit</span>
+  </button>`;
+}
+
+function lane(stage) {
+  const assets = map.assets.filter((a) => a.stage === stage.id);
+  const problems = map.problems.filter((p) => p.stage === stage.id);
+  const opps = live().filter((o) => o.stage === stage.id);
+  return `<section class="lane" aria-labelledby="lane-${stage.id}">
+    <div class="lane-head">
+      <h2 id="lane-${stage.id}">${stage.label}</h2>
+      <div class="hint">${stage.hint}</div>
+      ${map.process[stage.id] ? `<p class="proc"><b>Your process</b>${esc(map.process[stage.id])}</p>` : ''}
+    </div>
+    <div class="group-label">Already in place</div>
+    ${assets.length ? assets.map((a) => `<div class="asset" data-id="${esc(a.id)}">${esc(a.name)}${a.kind ? `<small>${esc(a.kind)}</small>` : ''}</div>`).join('') : '<div class="empty-note">Nothing yet</div>'}
+    <div class="group-label">Where customers get stuck</div>
+    ${problems.length ? problems.map((p) => `<div class="problem" data-id="${esc(p.id)}">${esc(p.text)}</div>`).join('') : '<div class="empty-note">Nothing mentioned</div>'}
+    <div class="group-label">Suggested products</div>
+    ${opps.length ? opps.map(oppCard).join('') : '<div class="empty-note">No suggestions here</div>'}
+  </section>`;
+}
+
+function offerNode(o) {
+  const fed = live().filter((op) => op.connects.some((c) => c.offer === o.id));
+  return `<button type="button" class="offer" data-offer="${esc(o.id)}" aria-label="${esc(o.name)}: edit offer">
+    <div class="k">${OFFER_KINDS[o.kind]}</div>
+    <h3>${esc(o.name)} ${o.price ? `<span class="price">${esc(o.price)}</span>` : ''}</h3>
+    ${o.description ? `<p>${esc(o.description)}</p>` : ''}
+    <div class="fed">${fed.length ? `Connected ideas: ${fed.map((f) => esc(f.name)).join(', ')}` : 'No ideas connected yet'}</div>
+  </button>`;
+}
+
+function recPanel() {
+  const r = map.recommendation;
+  const o = oppById(r.opportunityId);
+  if (!o) return '<section class="panel rec"><p>Choose the product to test first by opening it and selecting "Test this first".</p></section>';
+  return `<section class="panel rec" aria-labelledby="rec-h">
+    <div class="panel-head">
+      <div><div class="eyebrow">Test this first</div><h2 id="rec-h">${esc(o.name)}</h2></div>
+      <button type="button" class="btn small" data-edit="rec">Edit</button>
+    </div>
+    <p>${esc(o.outcome)}</p>
+    <h3>Why this one first</h3>
+    ${r.why.length ? `<ul>${r.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : '<p class="note">Add your reasons for choosing this one.</p>'}
+    ${r.assumptions.length ? `<h3>What is still an assumption</h3><ul class="assume">${r.assumptions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+    <h3>Your first test</h3>
+    <div class="step-box">${esc(r.validationStep)}</div>
+    ${r.nextStep ? `<p class="note">${esc(r.nextStep)}</p>` : ''}
+  </section>`;
+}
+
+function rolesPanel() {
+  return `<section class="panel" aria-labelledby="roles-h">
+    <div class="eyebrow">Not every idea belongs in the funnel</div>
+    <h2 id="roles-h">How each idea is best used</h2>
+    <div class="roles-list" style="margin-top:12px">${Object.entries(ROLES).map(([key, r]) => {
+      const list = live().filter((o) => o.role === key);
+      return `<div class="role-group">
+        <h3><span class="role ${key}">${r.label}</span></h3>
+        <p>${r.help}</p>
+        ${list.length ? `<ul>${list.map((o) => `<li><button type="button" data-open="${esc(o.id)}">${esc(o.name)}</button>${key === 'paid' ? ` <small class="where">${o.slot ? SLOTS[o.slot].label : 'Store only'}</small>` : ''}</li>`).join('')}</ul>` : '<span class="none">None on this map</span>'}
+      </div>`;
+    }).join('')}</div>
+  </section>`;
+}
+
+const money = (n) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+
+function slotCard(k, o) {
+  const s = SLOTS[k];
+  if (!o) {
+    return `<button type="button" class="slot empty" data-slot="${k}" aria-label="${s.label}: choose an idea">
+      <span class="slot-k">${s.label}</span><span class="slot-when">${s.when}</span>
+      <span class="slot-add">Optional. Choose an idea</span></button>`;
+  }
+  const have = o.sources.assets.map((id) => assetById(id)?.name).filter(Boolean);
+  return `<button type="button" class="slot ${isFirst(o) ? 'first' : ''}" data-opp="${esc(o.id)}" aria-label="${s.label}: ${esc(o.name)}, view and edit">
+    <span class="slot-k">${s.label}${o.price ? `<b class="slot-price">${esc(o.price)}</b>` : ''}</span>
+    <span class="slot-when">${s.when}</span>
+    <h3>${esc(o.name)}</h3>
+    ${o.problem ? `<span class="slot-line"><b>Solves:</b> ${esc(o.problem)}</span>` : ''}
+    ${o.outcome ? `<span class="slot-line"><b>Result:</b> ${esc(o.outcome)}</span>` : ''}
+    <span class="have ${have.length ? 'yes' : 'no'}">${have.length ? `You already have: ${esc(shortList(have))}` : 'New material to create'}</span>
+  </button>`;
+}
+
+function funnelSection() {
+  const f = funnelOf(map);
+  const sig = map.offers.find((o) => o.kind === 'signature') || map.offers.find((o) => o.kind === 'premium') || map.offers[0];
+  const count = SLOT_ORDER.filter((k) => f[k]).length;
+  const ready = SLOT_ORDER.filter((k) => f[k]?.sources.assets.length).length;
+  const total = totalOfferValue(map);
+  return `<section class="funnel" aria-labelledby="fun-h">
+    <div class="fun-head">
+      <div>
+        <div class="eyebrow">Your Authority Funnel</div>
+        <h2 id="fun-h">${count ? `${count} digital product${count > 1 ? 's' : ''}, each one step closer to ${esc(sig?.name || 'your signature offer')}` : 'Choose your first digital product'}</h2>
+        <p>Each product solves one specific problem. You do not need all five: start with a main product and add more when you are ready. Each one you add gives buyers another way to go further.${ready ? ` <b>${ready} of ${count} use material you already have.</b>` : ''}</p>
+      </div>
+      <dl class="aov">
+        <div><dt>Main product</dt><dd>${f.main?.price ? esc(f.main.price) : '—'}</dd></div>
+        <div><dt>Average per sale (estimate)</dt><dd>${f.main?.price ? money(Math.round(estimateAov(map, 'expected'))) : '—'}</dd></div>
+        <div><dt>If someone says yes to every offer</dt><dd>${total ? money(total) : '—'}</dd></div>
+      </dl>
+    </div>
+    <div class="fun-flow">
+      <div class="fun-col">${slotCard('main', f.main)}</div>
+      <div class="fun-col">${slotCard('bump', f.bump)}</div>
+      <div class="fun-col branch">${slotCard('upsell', f.upsell)}<div class="branch-note" aria-hidden="true">If they say no</div>${slotCard('downsell', f.downsell)}</div>
+      <div class="fun-col">${slotCard('oto', f.oto)}</div>
+      <div class="fun-col dest-col">
+        ${sig ? `<button type="button" class="dest" data-offer="${esc(sig.id)}" aria-label="${esc(sig.name)}: edit offer">
+          <span class="slot-k">Leads to your ${esc(OFFER_KINDS[sig.kind].toLowerCase())}</span>
+          <h3>${esc(sig.name)}${sig.price ? ` <span class="price">${esc(sig.price)}</span>` : ''}</h3>
+          ${sig.description ? `<p>${esc(sig.description)}</p>` : ''}
+          <span class="dest-note">Your emails and follow-up invite funnel buyers here.</span>
+        </button>` : ''}
+      </div>
+    </div>
+    <p class="note fun-foot">Every product in your funnel can also be sold on its own in your store. The average per sale uses expected take rates, explained below. "Yes to every offer" counts the upsell or the downsell, never both. Neither is a forecast.</p>
+  </section>`;
+}
+
+function pricingPanel() {
+  const f = funnelOf(map);
+  const goal = map.goal;
+  const est = Object.fromEntries(Object.keys(TAKE_RATES).map((k) => [k, Math.round(estimateAov(map, k))]));
+  const filled = SLOT_ORDER.filter((k) => f[k]);
+  const setAov = (s) => Math.round(estimateAov(map, 'expected', s.prices));
+  let msg;
+  if (!f.main) msg = 'Choose a main product to see what each sale could bring in.';
+  else if (est.expected >= goal) msg = `At expected take rates your funnel averages about ${money(est.expected)} per sale, which meets your ${money(goal)} goal.`;
+  else if (est.stretch >= goal) msg = `At expected take rates your funnel averages about ${money(est.expected)} per sale. You would reach ${money(goal)} only with strong take rates, so consider higher prices or ${filled.length < 5 ? 'adding the empty positions' : 'a higher-priced one-time offer'}.`;
+  else msg = `At expected take rates your funnel averages about ${money(est.expected)} per sale. To average ${money(goal)}, most of the gap has to come from a higher main price and a bigger upsell and one-time offer${filled.length < 5 ? ', or from filling the empty positions' : ''}. Most buyers take only the main product, so that price matters most.`;
+  return `<section class="panel pricing" aria-labelledby="price-h">
+    <div class="eyebrow">Pricing and average order value</div>
+    <h2 id="price-h">What could each sale bring in?</h2>
+    <p class="lead">Your average order value is what a buyer spends on average. Most buyers take only the main product, and a smaller share say yes to each extra offer, so your average sits well below the "yes to every offer" total.</p>
+    <div class="goal" role="radiogroup" aria-label="Your goal per sale"><span>Your goal per sale:</span>${AOV_GOALS.map((g) => `<button type="button" role="radio" aria-checked="${g === goal}" class="goal-chip ${g === goal ? 'on' : ''}" data-goal="${g}">${money(g)}</button>`).join('')}</div>
+    <div class="est">${Object.entries(TAKE_RATES).map(([k, r]) => `<div class="est-card ${f.main && est[k] >= goal ? 'met' : ''}"><span>${r.label}</span><b>${f.main ? money(est[k]) : '—'}</b><small>${f.main && est[k] >= goal ? 'Meets your goal' : 'Average per sale'}</small></div>`).join('')}</div>
+    <p class="goal-msg">${msg}</p>
+    <h3>Price ranges to choose from</h3>
+    <ul class="ranges">${SLOT_ORDER.map((k) => { const r = PRICE_RANGES[k]; const o = f[k]; return `<li class="${o ? '' : 'off'}">
+      <div class="rg-top"><b>${SLOTS[k].label}</b><span class="rg">$${r.low} to $${r.high}</span><span class="yours">${o ? (o.price ? `Yours: ${esc(o.price)}` : 'No price yet') : 'Not in your funnel'}</span></div>
+      <small>${r.note}</small></li>`; }).join('')}</ul>
+    <h3>Or start from a price set</h3>
+    <div class="sets">${PRICE_SETS.map((s) => `<div class="set"><b>${s.label}</b><span>${SLOT_ORDER.map((k) => `${SHORT[k]} $${s.prices[k]}`).join(' · ')}</span>
+      <small>${f.main ? `About ${money(setAov(s))} per sale with your positions, at expected rates` : ''}</small>
+      <button type="button" class="btn small" data-priceset="${s.id}" ${filled.length ? '' : 'disabled'}>Use these prices</button></div>`).join('')}</div>
+    <p class="note">Ranges come from widely published low-ticket funnel guidance (2025 to 2026). Take rates are the same illustrative planning assumptions as the Authority Funnel Revenue Calculator, for example 20% of buyers adding the bump and 6% taking the upsell at expected rates. They are not verified benchmarks or predictions. Test with your own buyers, then use the calculator to model traffic and profit.</p>
+  </section>`;
+}
+const SHORT = { main: 'Main', bump: 'Bump', upsell: 'Upsell', downsell: 'Downsell', oto: 'OTO' };
+
+const ARROW = (cls) => `<svg width="26" height="8" aria-hidden="true"><line x1="0" y1="4" x2="26" y2="4" class="${cls}" style="stroke-width:2;${cls === 'supports' ? 'stroke-dasharray:6 5;' : cls === 'leads' ? 'stroke-dasharray:2 5;stroke-linecap:round;' : ''}stroke:var(--rel-${cls})"></line></svg>`;
+
+function renderMain() {
+  const b = map.business;
+  const removed = map.opportunities.filter((o) => o.removed);
+  $('#app').innerHTML = `
+  <div class="review-bar"><div class="wrap">
+    <span><b>Prototype review.</b> The finished map works the same way for any established business. See it for:</span>
+    <label class="sr" for="exampleSwitch">Example business</label>
+    <select id="exampleSwitch" data-switch="1">${EXAMPLES.map((x) => `<option value="${x.id}" ${x.id === exampleId ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select>
+  </div></div>
+  <header class="mast">
+    <div class="wrap mast-grid">
+      <div>
+        <div class="kicker">${b.exampleLabel ? `<span class="tag">${esc(b.exampleLabel)}</span>` : ''}<span class="tag">Authority Funnel Map</span></div>
+        <h1>The products already hiding in <span>${esc(b.name || 'your business')}</span></h1>
+        <p class="biz"><b>You sell:</b> ${esc(b.what)}.<br><b>Your customers:</b> ${esc(b.buyer)}, looking for ${esc(lowerFirst(b.buyerGoal))}.</p>
+      </div>
+      <div class="insum">
+        <h2>In short</h2>
+        <p>${esc(map.summary)}</p>
+        <button type="button" class="btn quiet small" data-edit="summary" style="color:var(--gold);margin-top:8px;padding-left:0">Edit summary</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="toolbar">
+      <div class="legend" aria-label="Key">
+        <span><i class="sw k-asset"></i>Already in place</span>
+        <span><i class="sw k-problem"></i>Where customers get stuck</span>
+        <span><i class="sw k-opp"></i>Suggested product</span>
+        <span><i class="sw k-first"></i>Test first</span>
+      </div>
+      <div class="tools">
+        <span class="saved" id="saved" role="status">${map.meta.editedAt ? 'Saved on this device' : 'Example map'}</span>
+        <button type="button" class="btn small" data-act="add">Add an idea</button>
+        <button type="button" class="btn small quiet" data-act="reset">${resetArmed ? 'Click again to reset' : 'Reset to example'}</button>
+      </div>
+    </div>
+
+    ${funnelSection()}
+    ${pricingPanel()}
+
+    <div class="below">${recPanel()}${rolesPanel()}</div>
+
+    <div class="section-head">
+      <h2>Where these ideas came from</h2>
+      <p>Your customer journey, what you already have and where customers get stuck. Hover or tap an idea to see what it was built from and which offer it connects to. Buyers can start anywhere: these are options, not a fixed path.</p>
+    </div>
+
+    <div class="board-wrap" id="boardWrap">
+      <svg class="links" id="links" aria-hidden="true"></svg>
+      <div class="board">${STAGES.map(lane).join('')}</div>
+      <section class="rail" aria-labelledby="rail-h">
+        <div class="rail-head"><h2 id="rail-h">Your existing offers</h2><p>The larger offers these ideas can prepare people for, support or lead to.</p></div>
+        <div class="offers">${map.offers.map(offerNode).join('')}</div>
+        <div class="rel-key" aria-label="Connection key">
+          ${Object.entries(RELATIONS).map(([k, r]) => `<span>${ARROW(k)}${r.label}</span>`).join('')}
+        </div>
+      </section>
+    </div>
+
+    ${removed.length ? `<details class="removed"><summary>Removed ideas (${removed.length})</summary><ul>${removed.map((o) => `<li>${esc(o.name)} <button type="button" class="btn quiet small" data-restore="${esc(o.id)}">Restore</button></li>`).join('')}</ul></details>` : ''}
+
+    <section class="fits" aria-label="Where this map fits">
+      <ol class="chips-row">
+        <li>High-value lead magnet</li><li>Entry offer</li>
+        <li class="here">Authority Funnel: this map</li>
+        <li>Bridge offer</li><li>Signature offer</li><li>Membership or retreats</li>
+      </ol>
+      <p>Your Offer Map has several parts. This map covers one of them: the digital products in your Authority Funnel. Building the funnel pages, emails and workflows that lead buyers to your signature offer comes next.</p>
+    </section>
+  </main>
+  <footer class="wrap foot"><span>Prototype for review. ${map.meta.source?.startsWith('example') ? 'Example data. ' : ''}Changes save in this browser only.</span><span>Expertise-to-Digital-Product Creator, map prototype v0.5.0</span></footer>`;
+  requestAnimationFrame(drawLinks);
+}
+
+function lowerFirst(s) { return s ? s.charAt(0).toLowerCase() + s.slice(1) : ''; }
+
+/* ---------- Connectors ---------- */
+function drawLinks() {
+  const svg = $('#links');
+  const wrap = $('#boardWrap');
+  if (!svg || !wrap) return;
+  if (window.innerWidth <= 1000) { svg.innerHTML = ''; return; }
+  const W = wrap.getBoundingClientRect();
+  const markers = Object.keys(RELATIONS).map((k) => `<marker id="arr-${k}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--rel-${k})"></path></marker>`).join('');
+  const paths = [];
+  const laneCount = {};
+  const offerCount = {};
+  const offerTotals = {};
+  for (const o of live()) for (const c of o.connects) offerTotals[c.offer] = (offerTotals[c.offer] || 0) + 1;
+
+  for (const o of live()) {
+    const card = wrap.querySelector(`.opp[data-opp="${CSS.escape(o.id)}"]`);
+    if (!card) continue;
+    const laneEl = card.closest('.lane');
+    const L = laneEl.getBoundingClientRect();
+    const C = card.getBoundingClientRect();
+    for (const c of o.connects) {
+      const offerEl = wrap.querySelector(`.offer[data-offer="${CSS.escape(c.offer)}"]`);
+      if (!offerEl) continue;
+      const O = offerEl.getBoundingClientRect();
+      const k = (laneCount[o.stage] = (laneCount[o.stage] || 0) + 1) - 1;
+      const n = (offerCount[c.offer] = (offerCount[c.offer] || 0) + 1) - 1;
+      const total = offerTotals[c.offer];
+      const x1 = C.right - W.left;
+      const y1 = C.top - W.top + Math.min(34, C.height / 2);
+      const gx = L.right - W.left + 6 + k * 5; // run down the gutter beside the lane
+      const ex = O.left - W.left + O.width * ((n + 1) / (total + 1));
+      const ey = O.top - W.top - 3;
+      const turn = ey - 34;
+      const d = `M${x1},${y1} L${gx},${y1} L${gx},${turn} C${gx},${turn + 22} ${ex},${turn + 6} ${ex},${ey}`;
+      paths.push(`<path d="${d}" class="${c.relation}" data-opp="${esc(o.id)}" data-offer="${esc(c.offer)}" marker-end="url(#arr-${c.relation})"></path>`);
+    }
+  }
+  svg.setAttribute('viewBox', `0 0 ${W.width} ${W.height}`);
+  svg.innerHTML = `<defs>${markers}</defs>${paths.join('')}`;
+}
+
+/* ---------- Highlight what an idea came from ---------- */
+function focusOn({ opp, offer }) {
+  const wrap = $('#boardWrap');
+  if (!wrap) return;
+  clearFocus();
+  wrap.classList.add('focusing');
+  const lit = (el) => el && el.classList.add('lit');
+  if (opp) {
+    const card = wrap.querySelector(`.opp[data-opp="${CSS.escape(opp)}"]`);
+    lit(card);
+    (card?.dataset.src || '').split(' ').filter(Boolean).forEach((id) => wrap.querySelectorAll(`[data-id="${CSS.escape(id)}"]`).forEach(lit));
+    (card?.dataset.offers || '').split(' ').filter(Boolean).forEach((id) => lit(wrap.querySelector(`.offer[data-offer="${CSS.escape(id)}"]`)));
+    wrap.querySelectorAll(`svg.links path[data-opp="${CSS.escape(opp)}"]`).forEach(lit);
+  }
+  if (offer) {
+    lit(wrap.querySelector(`.offer[data-offer="${CSS.escape(offer)}"]`));
+    wrap.querySelectorAll('.opp').forEach((c) => { if ((c.dataset.offers || '').split(' ').includes(offer)) lit(c); });
+    wrap.querySelectorAll(`svg.links path[data-offer="${CSS.escape(offer)}"]`).forEach(lit);
+  }
+}
+function clearFocus() {
+  const wrap = $('#boardWrap');
+  if (!wrap) return;
+  wrap.classList.remove('focusing');
+  wrap.querySelectorAll('.lit').forEach((el) => el.classList.remove('lit'));
+}
+
+/* ---------- Drawer ---------- */
+function field(label, key, value, { area = false, sub = '' } = {}) {
+  const id = `f-${key}`;
+  return `<div class="f"><label for="${id}">${label}${sub ? ` <span class="sub">${sub}</span>` : ''}</label>${area
+    ? `<textarea id="${id}" data-f="${key}">${esc(value)}</textarea>`
+    : `<input type="text" id="${id}" data-f="${key}" value="${esc(value)}">`}</div>`;
+}
+
+function drawerOpp(o) {
+  const src = [
+    ...o.sources.assets.map((id) => assetById(id)).filter(Boolean).map((a) => `<span class="a">${esc(a.name)}</span>`),
+    ...o.sources.problems.map((id) => problemById(id)).filter(Boolean).map((p) => `<span class="p">${esc(p.text)}</span>`),
+  ];
+  return `
+    <header><div><h2 id="dr-h">${esc(o.name)}</h2><p>${evidenceStatus(o).label}. Changes save automatically.</p></div><button type="button" class="x" data-act="close" aria-label="Close">×</button></header>
+    <div class="body">
+      ${field('Product name', 'name', o.name)}
+      ${field('What it is', 'format', o.format)}
+      ${field('Who it is for', 'buyer', o.buyer, { area: true })}
+      ${field('Their problem', 'problem', o.problem, { area: true })}
+      ${field('The result they get', 'outcome', o.outcome, { area: true })}
+      <div class="f"><span class="lbl">How it is best used</span><div class="role-pick" role="radiogroup">${Object.entries(ROLES).map(([k, r]) => `
+        <label><input type="radio" name="role" value="${k}" ${o.role === k ? 'checked' : ''}><b>${r.label}</b><small>${r.help}</small></label>`).join('')}</div></div>
+      ${field('Why this role', 'roleReason', o.roleReason, { area: true })}
+      <div class="f"><label for="f-slot">Place in your Authority Funnel</label><select id="f-slot" data-slotpick="1">
+        <option value="">Not in the funnel</option>${SLOT_ORDER.map((k) => { const cur = funnelOf(map)[k]; return `<option value="${k}" ${o.slot === k ? 'selected' : ''}>${SLOTS[k].label}${cur && cur.id !== o.id ? ` (replaces ${esc(cur.name)})` : ''}</option>`; }).join('')}</select>
+        ${o.slot ? `<span class="sub" style="display:block;margin-top:6px">${SLOTS[o.slot].when}. ${SLOTS[o.slot].priceHint}.</span>` : ''}</div>
+      ${o.slot ? field('Price', 'price', o.price, { sub: `Common range: $${PRICE_RANGES[o.slot].low} to $${PRICE_RANGES[o.slot].high}` }) : ''}
+      <div class="f"><span class="lbl">Connection to your offers</span>${map.offers.map((of) => {
+        const c = o.connects.find((x) => x.offer === of.id);
+        return `<div class="conn-row"><span>${esc(of.name)}</span><select aria-label="Connection to ${esc(of.name)}" data-conn="${esc(of.id)}">
+          <option value="">Not connected</option>${Object.entries(RELATIONS).map(([k, r]) => `<option value="${k}" ${c?.relation === k ? 'selected' : ''}>${r.label}</option>`).join('')}</select></div>`;
+      }).join('')}</div>
+      <div class="f"><span class="lbl">Evidence <span class="sub">Mark what you know for sure and what is still a guess</span></span>
+        ${o.evidence.map((e, n) => `<div class="ev-row">
+          <textarea aria-label="Evidence ${n + 1}" data-ev="${n}">${esc(e.text)}</textarea>
+          <button type="button" class="toggle ${e.type}" data-evtype="${n}" aria-label="Change to ${e.type === 'fact' ? 'assumption' : 'fact'}">${EVIDENCE_TYPES[e.type]}</button>
+          <button type="button" class="x" data-evdel="${n}" aria-label="Delete evidence ${n + 1}">×</button></div>`).join('')}
+        <button type="button" class="btn small quiet" data-act="addEv">Add evidence or an assumption</button>
+      </div>
+      <div class="f"><label for="f-stage">Where it fits in the client journey</label><select id="f-stage" data-f="stage">${STAGES.map((s) => `<option value="${s.id}" ${o.stage === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}</select></div>
+      ${field('Effort to create', 'effort', o.effort)}
+      <div class="f"><span class="lbl">Built from</span>${src.length ? `<div class="src-list">${src.join('')}</div>` : '<span class="note">New material, not yet in your business.</span>'}</div>
+      ${confirmRemove ? `<div class="confirm" role="alert">Remove "${esc(o.name)}" from the map? You can restore it from Removed ideas.<div style="display:flex;gap:8px"><button type="button" class="btn small danger" data-act="removeYes">Remove</button><button type="button" class="btn small" data-act="removeNo">Keep it</button></div></div>` : ''}
+    </div>
+    <footer>
+      <button type="button" class="btn small ${isFirst(o) ? '' : 'solid'}" data-act="makeFirst" ${isFirst(o) ? 'disabled' : ''}>${isFirst(o) ? 'Test first (current)' : 'Test this first'}</button>
+      <button type="button" class="btn small danger" data-act="remove">Remove from map</button>
+    </footer>`;
+}
+
+function drawerOffer(of) {
+  return `
+    <header><div><h2 id="dr-h">${esc(of.name)}</h2><p>One of your existing offers. Changes save automatically.</p></div><button type="button" class="x" data-act="close" aria-label="Close">×</button></header>
+    <div class="body">
+      ${field('Offer name', 'name', of.name)}
+      ${field('Price', 'price', of.price)}
+      <div class="f"><label for="f-kind">Type</label><select id="f-kind" data-f="kind">${Object.entries(OFFER_KINDS).map(([k, v]) => `<option value="${k}" ${of.kind === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      ${field('Description', 'description', of.description, { area: true })}
+    </div>`;
+}
+
+function drawerRec() {
+  const r = map.recommendation;
+  return `
+    <header><div><h2 id="dr-h">Recommended first step</h2><p>One reason, assumption or note per line.</p></div><button type="button" class="x" data-act="close" aria-label="Close">×</button></header>
+    <div class="body">
+      <div class="f"><label for="r-why">Why this one first</label><textarea id="r-why" data-lines="why" style="min-height:150px">${esc(r.why.join('\n'))}</textarea></div>
+      <div class="f"><label for="r-as">What is still an assumption</label><textarea id="r-as" data-lines="assumptions">${esc(r.assumptions.join('\n'))}</textarea></div>
+      <div class="f"><label for="r-vs">Your first test</label><textarea id="r-vs" data-rf="validationStep" style="min-height:110px">${esc(r.validationStep)}</textarea></div>
+    </div>`;
+}
+
+function drawerSummary() {
+  return `
+    <header><div><h2 id="dr-h">In short</h2><p>The summary at the top of your map.</p></div><button type="button" class="x" data-act="close" aria-label="Close">×</button></header>
+    <div class="body"><div class="f"><label for="s-sum">Summary</label><textarea id="s-sum" data-sum="1" style="min-height:240px">${esc(map.summary)}</textarea></div></div>`;
+}
+
+function drawerSlot(k) {
+  const s = SLOTS[k];
+  const options = live().filter((o) => !o.slot);
+  return `
+    <header><div><h2 id="dr-h">${s.label}</h2><p>${s.when}. ${s.priceHint}.</p></div><button type="button" class="x" data-act="close" aria-label="Close">×</button></header>
+    <div class="body">
+      <p class="note">Choose an idea from your map to place here, or add a new one.</p>
+      <div class="pick-list">${options.length ? options.map((o) => `<button type="button" class="pick" data-place="${esc(o.id)}"><b>${esc(o.name)}</b><span>${esc(o.outcome || o.problem)}</span><small class="role ${o.role}">${ROLES[o.role].label}</small></button>`).join('') : '<p class="note">Every idea is already in the funnel.</p>'}</div>
+    </div>
+    <footer><button type="button" class="btn small solid" data-act="addHere">Add a new idea here</button></footer>`;
+}
+
+function placeInSlot(o, k) {
+  if (!k) { o.slot = ''; return; }
+  const cur = funnelOf(map)[k];
+  if (cur && cur.id !== o.id) { cur.slot = ''; showToast(`"${cur.name}" moved out of the funnel. It is still on your map.`); }
+  o.slot = k; o.role = 'paid';
+  if (!o.price) o.price = '';
+}
+
+function renderDrawer({ focus = false } = {}) {
+  const root = $('#drawerRoot');
+  if (!open) { root.innerHTML = ''; return; }
+  const body = open.type === 'opp' ? drawerOpp(oppById(open.id))
+    : open.type === 'offer' ? drawerOffer(offerById(open.id))
+    : open.type === 'slot' ? drawerSlot(open.id)
+    : open.type === 'rec' ? drawerRec() : drawerSummary();
+  const scroll = $('.drawer .body', root)?.scrollTop || 0;
+  root.innerHTML = `<div class="scrim" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-h">${body}</aside>`;
+  const b = $('.drawer .body', root);
+  if (b) b.scrollTop = scroll;
+  if (focus) $('.drawer input, .drawer textarea, .drawer select', root)?.focus();
+}
+
+function openDrawer(type, id, returnTo) {
+  open = { type, id, returnTo };
+  confirmRemove = false;
+  clearFocus();
+  renderDrawer({ focus: true });
+}
+function closeDrawer() {
+  const back = open?.returnTo;
+  open = null; confirmRemove = false;
+  renderDrawer();
+  if (back) document.querySelector(back)?.focus();
+}
+
+/* ---------- Actions ---------- */
+function setFirst(o) {
+  const r = map.recommendation;
+  r.opportunityId = o.id;
+  r.why = [];
+  r.assumptions = o.evidence.filter((e) => e.type === 'assumption').map((e) => e.text);
+  r.validationStep = `Before building anything new, describe "${o.name}" in two sentences to five people who match "${o.buyer}". Ask whether it would help them and whether they would pay for it, and write down what they say.`;
+}
+
+function removeOpp(o) {
+  o.removed = true;
+  const wasFirst = isFirst(o);
+  if (wasFirst) {
+    const next = live()[0];
+    if (next) setFirst(next); else map.recommendation.opportunityId = null;
+  }
+  undo = { id: o.id, wasFirst, slot: o.slot, rec: wasFirst ? clone(map.recommendation) : null };
+  o.slot = '';
+  showToast(`Removed "${o.name}".`, 'Undo');
+}
+
+let toastTimer;
+function showToast(msg, action) {
+  const t = $('#toast');
+  t.innerHTML = `<span>${esc(msg)}</span>${action ? `<button type="button" data-act="undo">${action}</button>` : ''}`;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; undo = null; }, 7000);
+}
+
+function rerender() {
+  renderMain();
+  renderDrawer();
+}
+
+/* ---------- Events ---------- */
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button, .scrim');
+  if (!t) return;
+  const d = t.dataset;
+
+  if (d.goal) { map.goal = +d.goal; save(); rerender(); $(`[data-goal="${d.goal}"]`)?.focus(); return; }
+  if (d.priceset) {
+    const set = PRICE_SETS.find((x) => x.id === d.priceset); const f = funnelOf(map);
+    SLOT_ORDER.forEach((k) => { if (f[k]) f[k].price = `$${set.prices[k]}`; });
+    save(); rerender(); showToast(`${set.label} prices applied. You can still change any of them.`); return;
+  }
+  if (d.slot) return openDrawer('slot', d.slot, `[data-slot="${d.slot}"]`);
+  if (d.place) { const p = oppById(d.place); placeInSlot(p, open.id); save(); open = null; rerender(); return; }
+  if (d.opp) return openDrawer('opp', d.opp, t.classList.contains('slot') ? `.slot[data-opp="${CSS.escape(d.opp)}"]` : `.opp[data-opp="${CSS.escape(d.opp)}"]`);
+  if (d.open) return openDrawer('opp', d.open, `[data-open="${CSS.escape(d.open)}"]`);
+  if (d.offer) return openDrawer('offer', d.offer, `.offer[data-offer="${CSS.escape(d.offer)}"]`);
+  if (d.edit) return openDrawer(d.edit, null, `[data-edit="${d.edit}"]`);
+  if (d.restore) { const o = oppById(d.restore); o.removed = false; save(); rerender(); showToast(`Restored "${o.name}".`); return; }
+
+  const o = open?.type === 'opp' ? oppById(open.id) : null;
+  if (d.evtype !== undefined && o) { const ev = o.evidence[+d.evtype]; ev.type = ev.type === 'fact' ? 'assumption' : 'fact'; save(); rerender(); return; }
+  if (d.evdel !== undefined && o) { o.evidence.splice(+d.evdel, 1); save(); rerender(); return; }
+
+  switch (d.act) {
+    case 'close': return closeDrawer();
+    case 'addEv': o.evidence.push({ type: 'assumption', text: '' }); save(); renderDrawer(); $(`.drawer [data-ev="${o.evidence.length - 1}"]`)?.focus(); return;
+    case 'makeFirst': setFirst(o); save(); rerender(); showToast(`"${o.name}" is now the one to test first. Add your reasons in the recommendation.`); return;
+    case 'remove': confirmRemove = true; renderDrawer(); return;
+    case 'removeNo': confirmRemove = false; renderDrawer(); return;
+    case 'removeYes': removeOpp(o); open = null; confirmRemove = false; save(); rerender(); return;
+    case 'undo': {
+      if (!undo) return;
+      const r = oppById(undo.id); r.removed = false;
+      if (undo.slot && !funnelOf(map)[undo.slot]) r.slot = undo.slot;
+      if (undo.wasFirst) { map.recommendation.opportunityId = r.id; }
+      undo = null; $('#toast').hidden = true; save(); rerender(); return;
+    }
+    case 'add':
+    case 'addHere': {
+      const slot = d.act === 'addHere' ? open.id : '';
+      const id = nextId('op', map.opportunities);
+      map.opportunities.push({
+        id, name: 'New product idea', format: '', stage: 'prepare', buyer: '', problem: '', outcome: '',
+        role: 'paid', roleReason: '', sources: { assets: [], problems: [] }, connects: [],
+        evidence: [{ type: 'assumption', text: 'Not checked yet.' }], effort: '', slot: '', price: '', removed: false,
+      });
+      if (slot) placeInSlot(oppById(id), slot);
+      save(); renderMain(); openDrawer('opp', id, `.opp[data-opp="${id}"]`); $('#f-name')?.select(); return;
+    }
+    case 'reset': {
+      if (!resetArmed) { resetArmed = setTimeout(() => { resetArmed = null; renderMain(); }, 4000); renderMain(); return; }
+      clearTimeout(resetArmed); resetArmed = null;
+      try { localStorage.removeItem(storeKey()); } catch { /* ignore */ }
+      map = exampleMap(); open = null; rerender(); showToast('Map reset to the example.'); return;
+    }
+    default:
+  }
+});
+
+document.addEventListener('input', (e) => {
+  const t = e.target;
+  if (!open) return;
+  if (open.type === 'opp') {
+    const o = oppById(open.id);
+    if (t.dataset.f) o[t.dataset.f] = t.value;
+    else if (t.name === 'role') { o.role = t.value; if (o.role !== 'paid' && o.slot) { o.slot = ''; showToast(`"${o.name}" was taken out of the funnel, because only digital products go there.`); } renderDrawer(); }
+    else if (t.dataset.slotpick !== undefined) { if (o.slot !== t.value) { placeInSlot(o, t.value); renderDrawer(); } }
+    else if (t.dataset.ev !== undefined) o.evidence[+t.dataset.ev].text = t.value;
+    else if (t.dataset.conn !== undefined) {
+      o.connects = o.connects.filter((c) => c.offer !== t.dataset.conn);
+      if (t.value) o.connects.push({ offer: t.dataset.conn, relation: t.value });
+    }
+    if (t.dataset.f === 'name') $('#dr-h').textContent = t.value;
+  } else if (open.type === 'offer') {
+    const of = offerById(open.id);
+    if (t.dataset.f) of[t.dataset.f] = t.value;
+  } else if (open.type === 'rec') {
+    const r = map.recommendation;
+    if (t.dataset.lines) r[t.dataset.lines] = t.value.split('\n').map((x) => x.trim()).filter(Boolean);
+    if (t.dataset.rf) r[t.dataset.rf] = t.value;
+  } else if (open.type === 'summary') {
+    map.summary = t.value;
+  }
+  save();
+  renderMain();
+});
+document.addEventListener('change', (e) => {
+  if (e.target.dataset.switch) { switchExample(e.target.value); return; }
+  if (open && (e.target.tagName === 'SELECT' || e.target.type === 'radio')) e.target.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) closeDrawer(); });
+
+const hover = (e) => {
+  const card = e.target.closest?.('.opp, .offer');
+  if (!card || open) return;
+  if (card.classList.contains('opp')) focusOn({ opp: card.dataset.opp });
+  else focusOn({ offer: card.dataset.offer });
+};
+document.addEventListener('mouseover', hover);
+document.addEventListener('focusin', hover);
+document.addEventListener('mouseout', (e) => { if (e.target.closest?.('.opp, .offer') && !e.relatedTarget?.closest?.('.opp, .offer')) clearFocus(); });
+document.addEventListener('focusout', (e) => { if (e.target.closest?.('.opp, .offer')) clearFocus(); });
+
+let raf;
+const relayout = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(drawLinks); };
+window.addEventListener('resize', relayout);
+if ('ResizeObserver' in window) new ResizeObserver(relayout).observe(document.body);
+document.fonts?.ready?.then(relayout);
+
+renderMain();
+</script>
