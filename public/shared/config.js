@@ -6,12 +6,12 @@ export const CONFIG = Object.freeze({
   productName: 'Authority Funnel Map',
   brand: 'Priddy Impact Group',
   // Where "Book a call" goes (your HighLevel calendar or booking page).
-  bookingUrl: '',
+  bookingUrl: 'https://links.faststartpro.com/widget/booking/zBwJmuspzkJOfEkoguwq',
   // Sales or checkout page for the $47 Low-Ticket Authority Funnel course.
   courseUrl: '',
   // Sales or checkout page for the $17 Authority Funnel Revenue Calculator.
-  calculatorUrl: '',
+  calculatorUrl: 'https://revenue-calculator-smoky.vercel.app',
   // Shown for help and privacy questions.
-  supportEmail: '',
+  supportEmail: 'info@faststartpro.com',
   retentionMonths: 12,
 });
